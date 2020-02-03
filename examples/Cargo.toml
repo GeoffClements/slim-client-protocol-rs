@@ -1,0 +1,21 @@
+[[example]]
+name = 'discover'
+path = 'discover.rs'
+
+[package]
+name = 'examples'
+version = '0.0.0'
+publish = false
+edition = '2018'
+[dependencies.slimproto]
+path = '../slimproto'
+version = '*'
+[dependencies.tokio]
+version = '0.2'
+features = [
+    'io-util',
+    'macros',
+    'tcp',
+    'time',
+    'udp',
+]
