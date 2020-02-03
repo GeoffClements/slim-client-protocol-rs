@@ -1,4 +1,4 @@
-# slim-client-rs
+# slim-client-protocol-rs
 
 A Tokio / Futures based crate for the Slim protocol
 
