@@ -16,6 +16,11 @@ features = [
     'time',
     'udp',
 ]
+
+[dependencies.tokio-util]
+version = "0.2"
+features = ["codec"]
+
 [dev-dependencies.tokio]
 version = '0.2'
 features = [

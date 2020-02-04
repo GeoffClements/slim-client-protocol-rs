@@ -128,7 +128,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_discover() {
-        let res = discover(Some(1)).await;
+        let res = discover(Some(Duration::from_secs(1))).await;
         assert!(res.is_ok());
 
         if let Ok(Some((ip, r))) = res {
