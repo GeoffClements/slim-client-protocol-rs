@@ -1,9 +1,9 @@
-use bytes::{buf::BufMut, BytesMut};
+use bytes::{buf::BufMut, Buf, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{ClientMessage, ServerMessage};
 
-use std::{convert::TryInto, io};
+use std::{convert::TryInto, io, net::Ipv4Addr};
 
 pub struct SlimCodec;
 
@@ -119,105 +119,128 @@ impl From<ClientMessage> for BytesMut {
 
 impl From<BytesMut> for ServerMessage {
     fn from(mut src: BytesMut) -> ServerMessage {
-        //         const GAIN_FACTOR: f64 = 65536.0;
+        const GAIN_FACTOR: f64 = 65536.0;
+
         let msg: String = src.split_to(4).into_iter().map(|c| c as char).collect();
+        let mut buf = src.split();
 
         match msg.as_str() {
-            //             "serv" => {
-            //                 if src.len() < 4 {
-            //                     ServerMessage::Error
-            //                 } else {
-            //                     let ip_addr = Ipv4Addr::from(src.split_to(4).into_buf().get_u32_be());
-            //                     let sync_group = if src.len() > 0 {
-            //                         Some(
-            //                             src.take()
-            //                                 .into_iter()
-            //                                 .map(|c| c as char)
-            //                                 .collect::<String>(),
-            //                         )
-            //                     } else {
-            //                         None
-            //                     };
-            //                     ServerMessage::Serv {
-            //                         ip_address: ip_addr,
-            //                         sync_group_id: sync_group,
-            //                     }
-            //                 }
-            //             }
+            "serv" => {
+                if buf.len() < 4 {
+                    ServerMessage::Error
+                } else {
+                    let ip_addr = Ipv4Addr::from(buf.split_to(4).get_u32());
+                    let sync_group = if buf.len() > 0 {
+                        Some(buf.into_iter().map(|c| c as char).collect::<String>())
+                    } else {
+                        None
+                    };
+                    ServerMessage::Serv {
+                        ip_address: ip_addr,
+                        sync_group_id: sync_group,
+                    }
+                }
+            }
 
-            //             "strm" => {
-            //                 if src.len() < 24 {
-            //                     return ServerMessage::Error;
-            //                 }
+            "strm" => {
+                if src.len() < 24 {
+                    return ServerMessage::Error;
+                }
 
-            //                 match src[0] as char {
-            //                     't' => {
-            //                         let timestamp = src[14..18].into_buf().get_u32_be();
-            //                         ServerMessage::Status(timestamp)
-            //                     }
+                match buf[0] as char {
+                    't' => {
+                        let timestamp = buf.split_to(14).get_u32();
+                        ServerMessage::Status(timestamp)
+                    }
 
-            //                     's' => {
-            //                         let replay_gain = src[14..18].into_buf().get_u32_be() as f64 / GAIN_FACTOR;
-            //                         let http_headers = if src.len() >= 24 {
-            //                             src[24..].into_iter().map(|c| *c as char).collect()
-            //                         } else {
-            //                             String::new()
-            //                         };
-            //                         ServerMessage::Stream {
-            //                             autostart: src[1] == b'1' || src[1] == b'3',
-            //                             threshold: src[7] as u32, // kbytes
-            //                             output_threshold: src[12] as u64 * 100_000_000, // nanoseconds
-            //                             replay_gain: replay_gain,
-            //                             server_port: src[18..20].into_buf().get_u16_be(),
-            //                             server_ip: Ipv4Addr::from(src[20..24].into_buf().get_u32_be()),
-            //                             http_headers: http_headers,
-            //                         }
-            //                     }
+                    's' => {
+                        let frame = buf.split_to(14);
+                        let replay_gain = buf.split_to(4).get_u32() as f64 / GAIN_FACTOR;
+                        let server_port = buf.split_to(2).get_u16();
+                        let server_ip = Ipv4Addr::from(buf.split_to(4).get_u32());
+                        let http_headers = if buf.len() > 0 {
+                            buf[..].into_iter().map(|c| *c as char).collect()
+                        } else {
+                            String::new()
+                        };
+                        ServerMessage::Stream {
+                            autostart: frame[1] == b'1' || frame[1] == b'3',
+                            threshold: frame[7] as u32, // kbytes
+                            output_threshold: frame[12] as u64 * 100_000_000, // nanoseconds
+                            replay_gain: replay_gain,
+                            server_port: server_port,
+                            server_ip: server_ip,
+                            http_headers: http_headers,
+                        }
+                    }
 
-            //                     'q' => ServerMessage::Stop,
+                    'q' => ServerMessage::Stop,
 
-            //                     'p' => {
-            //                         let timestamp = src[14..18].into_buf().get_u32_be();
-            //                         ServerMessage::Pause(timestamp)
-            //                     }
+                    'p' => {
+                        let _ = buf.split_to(14);
+                        let timestamp = buf.get_u32();
+                        ServerMessage::Pause(timestamp)
+                    }
 
-            //                     'u' => {
-            //                         let timestamp = src[14..18].into_buf().get_u32_be();
-            //                         ServerMessage::Unpause(timestamp)
-            //                     }
+                    'u' => {
+                        let _ = buf.split_to(14);
+                        let timestamp = buf.get_u32();
+                        ServerMessage::Unpause(timestamp)
+                    }
 
-            //                     'a' => {
-            //                         let timestamp = src[14..18].into_buf().get_u32_be();
-            //                         ServerMessage::Skip(timestamp)
-            //                     }
+                    'a' => {
+                        let _ = buf.split_to(14);
+                        let timestamp = buf.get_u32();
+                        ServerMessage::Skip(timestamp)
+                    }
 
-            //                     cmd @ _ => {
-            //                         let mut msg = msg.to_owned();
-            //                         msg.push('_');
-            //                         msg.push(cmd);
-            //                         ServerMessage::Unrecognised(msg)
-            //                     }
-            //                 }
-            //             }
-            //             "aude" => ServerMessage::Enable(!(src[1].into_buf().get_u8() == 0)),
+                    cmd @ _ => {
+                        let mut msg = msg.to_owned();
+                        msg.push('_');
+                        msg.push(cmd);
+                        ServerMessage::Unrecognised(msg)
+                    }
+                }
+            }
 
-            //             "audg" => ServerMessage::Gain(
-            //                 src[10..14].into_buf().get_u32_be() as f64 / GAIN_FACTOR,
-            //                 src[14..18].into_buf().get_u32_be() as f64 / GAIN_FACTOR,
-            //             ),
+            "aude" => {
+                if buf.len() < 2 {
+                    ServerMessage::Error
+                } else {
+                    let (spdif, dac) = (buf[0] != 0, buf[1] != 0);
+                    ServerMessage::Enable(spdif, dac)
+                }
+            }
 
-            //             "setd" => {
-            //                 if src.len() > 1 {
-            //                     let name: String = src[1..].into_iter().map(|c| *c as char).collect();
-            //                     ServerMessage::Setname(name)
-            //                 } else {
-            //                     if src[0] == 0 {
-            //                         ServerMessage::Queryname
-            //                     } else {
-            //                         ServerMessage::Unknownsetd(src[0])
-            //                     }
-            //                 }
-            //             }
+            "audg" => {
+                if buf.len() < 22 {
+                    ServerMessage::Error
+                } else {
+                    let mut buf = buf.split_to(10);
+                    ServerMessage::Gain(
+                        buf.split_to(4).get_u32() as f64 / GAIN_FACTOR,
+                        buf.split_to(4).get_u32() as f64 / GAIN_FACTOR,
+                    )
+                }
+            }
+
+            "setd" => {
+                if buf.len() == 0 {
+                    ServerMessage::Error
+                } else {
+                    if buf.len() > 1 {
+                        let name: String = buf[1..].into_iter().map(|c| *c as char).collect();
+                        ServerMessage::Setname(name)
+                    } else {
+                        if buf[0] == 0 {
+                            ServerMessage::Queryname
+                        } else {
+                            ServerMessage::Error
+                        }
+                    }
+                }
+            }
+
             cmd @ _ => ServerMessage::Unrecognised(cmd.to_owned()),
         }
     }
