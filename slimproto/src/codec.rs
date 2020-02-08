@@ -1,63 +1,9 @@
-use byteorder::{ReadBytesExt, BE};
-use bytes::{
-    buf::{BufExt, BufMut},
-    BytesMut,
-};
-use mac_address::MacAddress;
+use bytes::{buf::BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
-use std::{
-    io,
-    net::Ipv4Addr,
-};
+use crate::{ClientMessage, ServerMessage};
 
-pub struct StatData;
-
-pub enum ClientMessage {
-    Helo {
-        device_id: u8,
-        revision: u8,
-        mac: MacAddress,
-        uuid: [u8; 16],
-        wlan_channel_list: u16,
-        bytes_received: u64,
-        capabilities: String,
-    },
-    Stat {
-        event_code: String,
-        stat_data: StatData,
-    },
-    Bye(u8),
-    Name(String),
-}
-
-pub enum ServerMessage {
-    Serv {
-        ip_address: Ipv4Addr,
-        sync_group_id: Option<String>,
-    },
-    Status(u32),
-    Stream {
-        autostart: bool,
-        threshold: u32,
-        output_threshold: u64,
-        replay_gain: f64,
-        server_port: u16,
-        server_ip: Ipv4Addr,
-        http_headers: String,
-    },
-    Gain(f64, f64),
-    Enable(bool),
-    Stop,
-    Pause(u32),
-    Unpause(u32),
-    Queryname,
-    Setname(String),
-    Unknownsetd(u8),
-    Skip(u32),
-    Unrecognised(String),
-    Error,
-}
+use std::{convert::TryInto, io};
 
 pub struct SlimCodec;
 
@@ -80,10 +26,7 @@ impl Decoder for SlimCodec {
             return Ok(None);
         };
 
-        let frame_size = {
-            let mut r = buf.take(2).reader();
-            r.read_u16::<BE>()? as usize
-        };
+        let frame_size = u16::from_be_bytes(buf[..2].try_into().unwrap()) as usize;
 
         if buf.len() < frame_size + 2 {
             if buf.capacity() < frame_size + 2 {
@@ -92,7 +35,7 @@ impl Decoder for SlimCodec {
             return Ok(None);
         };
 
-        buf.split_to(2);
+        let _ = buf.split_to(2);
         let msg = buf.split_to(frame_size);
 
         match msg.into() {
@@ -107,7 +50,11 @@ impl Decoder for SlimCodec {
 
 impl From<ClientMessage> for BytesMut {
     fn from(src: ClientMessage) -> BytesMut {
-        let mut buf = Vec::with_capacity(1024);
+        const MSGSIZE: usize = 1024;
+
+        let mut msg = Vec::with_capacity(MSGSIZE + 2);
+        let mut frame_size = Vec::with_capacity(2);
+        let mut frame = Vec::with_capacity(MSGSIZE);
 
         match src {
             ClientMessage::Helo {
@@ -119,56 +66,54 @@ impl From<ClientMessage> for BytesMut {
                 bytes_received,
                 capabilities,
             } => {
-                buf.put("HELO".as_bytes());
-                buf.put_u8(device_id);
-                buf.put_u8(revision);
-                buf.put(mac.bytes().as_ref());
-                buf.put(uuid.as_ref());
-                buf.put_u16(wlan_channel_list);
-                buf.put_u64(bytes_received);
-                buf.put(capabilities.as_bytes());
+                msg.put("HELO".as_bytes());
+                frame.put_u8(device_id);
+                frame.put_u8(revision);
+                frame.put(mac.bytes().as_ref());
+                frame.put(uuid.as_ref());
+                frame.put_u16(wlan_channel_list);
+                frame.put_u64(bytes_received);
+                frame.put(capabilities.as_bytes());
             }
 
             ClientMessage::Bye(val) => {
-                buf.put("BYE!".as_bytes());
-                buf.put_u8(val);
-            } 
-            
+                msg.put("BYE!".as_bytes());
+                frame.put_u8(val);
+            }
             ClientMessage::Stat {
-                  event_code,
-                  stat_data,
-              } => {
-              buf.put("STAT".as_bytes());
-              buf.put(event_code.as_bytes());
-            //   buf.put_u8(stat_data.crlf);
-              buf.put_u16(0);
-            //   buf.put_u32(stat_data.buffer_size);
-            //   buf.put_u32(stat_data.fullness);
-            //   buf.put_u64(stat_data.bytes_received);
-            //   buf.put_u16(stat_data.sig_strength);
-            //   buf.put_u32(stat_data.jiffies);
-            //   buf.put_u32(stat_data.output_buffer_size);
-            //   buf.put_u32(stat_data.output_buffer_fullness);
-            //   buf.put_u32(stat_data.elapsed_seconds);
-            //   buf.put_u16(stat_data.voltage);
-            //   buf.put_u32(stat_data.elapsed_milliseconds);
-            //   buf.put_u32(stat_data.timestamp);
-            //   buf.put_u16(stat_data.error_code);
-              }
+                event_code,
+                stat_data,
+            } => {
+                msg.put("STAT".as_bytes());
+                frame.put(event_code.as_bytes());
+                frame.put_u8(stat_data.crlf);
+                frame.put_u16(0);
+                frame.put_u32(stat_data.buffer_size);
+                frame.put_u32(stat_data.fullness);
+                frame.put_u64(stat_data.bytes_received);
+                frame.put_u16(stat_data.sig_strength);
+                frame.put_u32(stat_data.jiffies);
+                frame.put_u32(stat_data.output_buffer_size);
+                frame.put_u32(stat_data.output_buffer_fullness);
+                frame.put_u32(stat_data.elapsed_seconds);
+                frame.put_u16(stat_data.voltage);
+                frame.put_u32(stat_data.elapsed_milliseconds);
+                frame.put_u32(stat_data.timestamp);
+                frame.put_u16(stat_data.error_code);
+            }
 
-              ClientMessage::Name(name) => {
-            //   info!("Sending SETD witn name: {}", name);
-              buf.put("SETD".as_bytes());
-              buf.put_u8(0);
-              buf.put(name.as_bytes());
-              }
+            ClientMessage::Name(name) => {
+                msg.put("SETD".as_bytes());
+                frame.put_u8(0);
+                frame.put(name.as_bytes());
+            }
         }
 
-        let mut msg_length = Vec::new();
-        msg_length.put_u32_le(buf[4..].len() as u32);
-        msg_length.into_iter().for_each(|v| buf.insert(4, v));
+        frame_size.put_u32(frame.len() as u32);
+        msg.append(&mut frame_size);
+        msg.append(&mut frame);
 
-        buf.iter().as_slice().into()
+        msg.iter().as_slice().into()
     }
 }
 
