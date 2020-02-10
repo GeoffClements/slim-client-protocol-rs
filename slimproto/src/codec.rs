@@ -50,11 +50,11 @@ impl Decoder for SlimCodec {
 
 impl From<ClientMessage> for BytesMut {
     fn from(src: ClientMessage) -> BytesMut {
-        const MSGSIZE: usize = 1024;
+        const FRAMESIZE: usize = 1024;
 
-        let mut msg = Vec::with_capacity(MSGSIZE + 2);
+        let mut msg = Vec::with_capacity(FRAMESIZE + 2);
         let mut frame_size = Vec::with_capacity(2);
-        let mut frame = Vec::with_capacity(MSGSIZE);
+        let mut frame = Vec::with_capacity(FRAMESIZE);
 
         match src {
             ClientMessage::Helo {
@@ -127,18 +127,18 @@ impl From<BytesMut> for ServerMessage {
         match msg.as_str() {
             "serv" => {
                 if buf.len() < 4 {
-                    ServerMessage::Error
+                    return ServerMessage::Error;
+                }
+
+                let ip_addr = Ipv4Addr::from(buf.split_to(4).get_u32());
+                let sync_group = if buf.len() > 0 {
+                    Some(buf.into_iter().map(|c| c as char).collect::<String>())
                 } else {
-                    let ip_addr = Ipv4Addr::from(buf.split_to(4).get_u32());
-                    let sync_group = if buf.len() > 0 {
-                        Some(buf.into_iter().map(|c| c as char).collect::<String>())
-                    } else {
-                        None
-                    };
-                    ServerMessage::Serv {
-                        ip_address: ip_addr,
-                        sync_group_id: sync_group,
-                    }
+                    None
+                };
+                ServerMessage::Serv {
+                    ip_address: ip_addr,
+                    sync_group_id: sync_group,
                 }
             }
 
@@ -205,43 +205,81 @@ impl From<BytesMut> for ServerMessage {
 
             "aude" => {
                 if buf.len() < 2 {
-                    ServerMessage::Error
-                } else {
-                    let (spdif, dac) = (buf[0] != 0, buf[1] != 0);
-                    ServerMessage::Enable(spdif, dac)
+                    return ServerMessage::Error;
                 }
+
+                let (spdif, dac) = (buf[0] != 0, buf[1] != 0);
+                ServerMessage::Enable(spdif, dac)
             }
 
             "audg" => {
                 if buf.len() < 22 {
-                    ServerMessage::Error
-                } else {
-                    let mut buf = buf.split_to(10);
-                    ServerMessage::Gain(
-                        buf.split_to(4).get_u32() as f64 / GAIN_FACTOR,
-                        buf.split_to(4).get_u32() as f64 / GAIN_FACTOR,
-                    )
+                    return ServerMessage::Error;
                 }
+
+                let mut buf = buf.split_to(10);
+                ServerMessage::Gain(
+                    buf.split_to(4).get_u32() as f64 / GAIN_FACTOR,
+                    buf.split_to(4).get_u32() as f64 / GAIN_FACTOR,
+                )
             }
 
             "setd" => {
                 if buf.len() == 0 {
-                    ServerMessage::Error
+                    return ServerMessage::Error;
+                }
+                if buf.len() > 1 {
+                    let name: String = buf[1..].into_iter().map(|c| *c as char).collect();
+                    ServerMessage::Setname(name)
                 } else {
-                    if buf.len() > 1 {
-                        let name: String = buf[1..].into_iter().map(|c| *c as char).collect();
-                        ServerMessage::Setname(name)
+                    if buf[0] == 0 {
+                        ServerMessage::Queryname
                     } else {
-                        if buf[0] == 0 {
-                            ServerMessage::Queryname
-                        } else {
-                            ServerMessage::Error
-                        }
+                        ServerMessage::Error
                     }
                 }
             }
 
             cmd @ _ => ServerMessage::Unrecognised(cmd.to_owned()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::SinkExt;
+    use mac_address::MacAddress;
+    use std::io::Cursor;
+    use tokio_util::codec::FramedWrite;
+
+    #[tokio::test]
+    async fn test_helo() {
+        let helo = ClientMessage::Helo {
+            device_id: 0,
+            revision: 1,
+            mac: MacAddress::new([1, 2, 3, 4, 5, 6]),
+            uuid: [0u8; 16],
+            wlan_channel_list: 3333,
+            bytes_received: 0,
+            capabilities: "abcd".to_owned(),
+        };
+
+        let mut buf_inner = [0u8; 46];
+        let buf = Cursor::new(&mut buf_inner[..]);
+        let mut framed = FramedWrite::new(buf, SlimCodec);
+        let _ = framed.send(helo).await;
+
+        assert_eq!(
+            &buf_inner[..32],
+            &[
+                b'H', b'E', b'L', b'O', 0, 0, 0, 38, 0, 1, 1, 2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0
+            ]
+        );
+        assert_eq!(
+            &buf_inner[32..],
+            &[13, 5, 0, 0, 0, 0, 0, 0, 0, 0, b'a', b'b', b'c', b'd']
+        );
     }
 }
