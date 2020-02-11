@@ -113,7 +113,7 @@ impl From<ClientMessage> for BytesMut {
         msg.append(&mut frame_size);
         msg.append(&mut frame);
 
-        msg.iter().as_slice().into()
+        msg.as_slice().into()
     }
 }
 
@@ -248,13 +248,14 @@ impl From<BytesMut> for ServerMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proto::StatData;
     use futures::SinkExt;
     use mac_address::MacAddress;
     use std::io::Cursor;
     use tokio_util::codec::FramedWrite;
 
     #[tokio::test]
-    async fn test_helo() {
+    async fn test_send_helo() {
         let helo = ClientMessage::Helo {
             device_id: 0,
             revision: 1,
@@ -265,21 +266,88 @@ mod tests {
             capabilities: "abcd".to_owned(),
         };
 
-        let mut buf_inner = [0u8; 46];
-        let buf = Cursor::new(&mut buf_inner[..]);
-        let mut framed = FramedWrite::new(buf, SlimCodec);
-        let _ = framed.send(helo).await;
-
+        let mut buf = [0u8; 46];
+        do_send(&mut buf, helo).await;
         assert_eq!(
-            &buf_inner[..32],
+            &buf[..32],
             &[
                 b'H', b'E', b'L', b'O', 0, 0, 0, 38, 0, 1, 1, 2, 3, 4, 5, 6, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0
             ]
         );
         assert_eq!(
-            &buf_inner[32..],
+            &buf[32..],
             &[13, 5, 0, 0, 0, 0, 0, 0, 0, 0, b'a', b'b', b'c', b'd']
         );
+    }
+
+    #[tokio::test]
+    async fn test_send_bye() {
+        let bye = ClientMessage::Bye(55);
+
+        let mut buf = [0u8; 9];
+        do_send(&mut buf, bye).await;
+
+        assert_eq!(&buf[..], &[b'B', b'Y', b'E', b'!', 0, 0, 0, 1, 55]);
+    }
+
+    #[tokio::test]
+    async fn test_send_stat() {
+        let stat_data = StatData {
+            crlf: 0,
+            buffer_size: 1234,
+            fullness: 5678,
+            bytes_received: 9123,
+            sig_strength: 45,
+            jiffies: 6789,
+            output_buffer_size: 1234,
+            output_buffer_fullness: 5678,
+            elapsed_seconds: 9012,
+            voltage: 3456,
+            elapsed_milliseconds: 7890,
+            timestamp: 1234,
+            error_code: 5678,
+        };
+        let stat = ClientMessage::Stat {
+            event_code: "STMt".to_owned(),
+            stat_data: stat_data,
+        };
+
+        let mut buf = [0u8; 61];
+        do_send(&mut buf, stat).await;
+
+        assert_eq!(
+            &buf[..32],
+            &[
+                b'S', b'T', b'A', b'T', 0, 0, 0, 53, b'S', b'T', b'M', b't', 0, 0, 0, 0, 0, 4, 210,
+                0, 0, 22, 46, 0, 0, 0, 0, 0, 0, 35, 163, 0
+            ]
+        );
+        assert_eq!(
+            &buf[32..],
+            &[
+                45, 0, 0, 26, 133, 0, 0, 4, 210, 0, 0, 22, 46, 0, 0, 35, 52, 13, 128, 0, 0, 30,
+                210, 0, 0, 4, 210, 22, 46
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_send_name() {
+        let name = ClientMessage::Name("BadBoy".to_owned());
+
+        let mut buf = [0u8; 15];
+        do_send(&mut buf, name).await;
+
+        assert_eq!(
+            &buf[..],
+            &[b'S', b'E', b'T', b'D', 0, 0, 0, 7, 0, b'B', b'a', b'd', b'B', b'o', b'y']
+        );
+    }
+
+    async fn do_send(buf: &mut [u8], frame: ClientMessage) {
+        let buf = Cursor::new(&mut buf[..]);
+        let mut framed = FramedWrite::new(buf, SlimCodec);
+        let _ = framed.send(frame).await;
     }
 }
