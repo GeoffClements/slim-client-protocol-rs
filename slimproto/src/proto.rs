@@ -41,6 +41,7 @@ pub enum ClientMessage {
     Name(String),
 }
 
+#[derive(Debug, PartialEq)]
 pub enum ServerMessage {
     Serv {
         ip_address: Ipv4Addr,

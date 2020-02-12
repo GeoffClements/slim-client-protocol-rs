@@ -147,7 +147,7 @@ impl From<BytesMut> for ServerMessage {
                     return ServerMessage::Error;
                 }
 
-                match buf[0] as char {
+                match buf.split_to(1)[0] as char {
                     't' => {
                         let timestamp = buf.split_to(14).get_u32();
                         ServerMessage::Status(timestamp)
@@ -249,10 +249,10 @@ impl From<BytesMut> for ServerMessage {
 mod tests {
     use super::*;
     use crate::proto::StatData;
-    use futures::SinkExt;
+    use futures::{SinkExt, StreamExt};
     use mac_address::MacAddress;
     use std::io::Cursor;
-    use tokio_util::codec::FramedWrite;
+    use tokio_util::codec::{FramedRead, FramedWrite};
 
     #[tokio::test]
     async fn test_send_helo() {
@@ -344,6 +344,44 @@ mod tests {
             &[b'S', b'E', b'T', b'D', 0, 0, 0, 7, 0, b'B', b'a', b'd', b'B', b'o', b'y']
         );
     }
+
+    #[tokio::test]
+    async fn test_recv_serv() {
+        let buf = [
+            0u8, 12, b's', b'e', b'r', b'v', 172, 16, 1, 2, b's', b'y', b'n', b'c',
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(
+                msg,
+                ServerMessage::Serv {
+                    ip_address: Ipv4Addr::new(172, 16, 1, 2),
+                    sync_group_id: Some("sync".to_owned())
+                }
+            );
+        } else {
+            panic!("SERV message not received");
+        }
+    }
+
+    // #[tokio::test]
+    // async fn test_recv_strm() {
+    //     let buf = [
+    //         0u8, 27, b's', b't', b'r', b'm', b's', 1, b'f', b'?', b'?', b'?', 12, 0, 0, 0, 0, 6, 0, 0, 1, 0, 0, 35, 41, 172, 16, 1, 2,
+    //     ];
+    //     let mut framed = FramedRead::new(&buf[..], SlimCodec);
+    //     if let Some(Ok(msg)) = framed.next().await {
+    //         assert_eq!(
+    //             msg,
+    //             ServerMessage::Serv {
+    //                 ip_address: Ipv4Addr::new(172, 16, 1, 2),
+    //                 sync_group_id: Some("sync".to_owned())
+    //             }
+    //         );
+    //     } else {
+    //         panic!("SERV message not received");
+    //     }
+    // }
 
     async fn do_send(buf: &mut [u8], frame: ClientMessage) {
         let buf = Cursor::new(&mut buf[..]);
