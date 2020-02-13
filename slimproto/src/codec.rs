@@ -143,13 +143,14 @@ impl From<BytesMut> for ServerMessage {
             }
 
             "strm" => {
-                if src.len() < 24 {
+                if buf.len() < 24 {
                     return ServerMessage::Error;
                 }
 
                 match buf.split_to(1)[0] as char {
                     't' => {
-                        let timestamp = buf.split_to(14).get_u32();
+                        let _ = buf.split_to(14);
+                        let timestamp = buf.get_u32();
                         ServerMessage::Status(timestamp)
                     }
 
@@ -364,6 +365,75 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_recv_status() {
+        let buf = [
+            0u8, 28, b's', b't', b'r', b'm', b't', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(msg, ServerMessage::Status(252711186));
+        } else {
+            panic!("STRMt message not received");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recv_stop() {
+        let buf = [
+            0u8, 28, b's', b't', b'r', b'm', b'q', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(msg, ServerMessage::Stop);
+        } else {
+            panic!("STRMq message not received");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recv_pause() {
+        let buf = [
+            0u8, 28, b's', b't', b'r', b'm', b'p', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(msg, ServerMessage::Pause(252711186));
+        } else {
+            panic!("STRMp message not received");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recv_unpause() {
+        let buf = [
+            0u8, 28, b's', b't', b'r', b'm', b'u', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(msg, ServerMessage::Unpause(252711186));
+        } else {
+            panic!("STRMu message not received");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recv_skip() {
+        let buf = [
+            0u8, 28, b's', b't', b'r', b'm', b'a', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(msg, ServerMessage::Skip(252711186));
+        } else {
+            panic!("STRMa message not received");
+        }
+    }
     // #[tokio::test]
     // async fn test_recv_strm() {
     //     let buf = [
