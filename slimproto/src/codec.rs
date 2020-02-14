@@ -214,21 +214,21 @@ impl From<BytesMut> for ServerMessage {
             }
 
             "audg" => {
-                if buf.len() < 22 {
+                if buf.len() < 18 {
                     return ServerMessage::Error;
                 }
 
-                let mut buf = buf.split_to(10);
-                ServerMessage::Gain(
-                    buf.split_to(4).get_u32() as f64 / GAIN_FACTOR,
-                    buf.split_to(4).get_u32() as f64 / GAIN_FACTOR,
-                )
+                let _ = buf.split_to(10);
+                let left = buf.split_to(4).get_u32() as f64 / GAIN_FACTOR;
+                let right = buf.split_to(4).get_u32() as f64 / GAIN_FACTOR;
+                ServerMessage::Gain(left, right)
             }
 
             "setd" => {
                 if buf.len() == 0 {
                     return ServerMessage::Error;
                 }
+
                 if buf.len() > 1 {
                     let name: String = buf[1..].into_iter().map(|c| *c as char).collect();
                     ServerMessage::Setname(name)
@@ -432,6 +432,68 @@ mod tests {
             assert_eq!(msg, ServerMessage::Skip(252711186));
         } else {
             panic!("STRMa message not received");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recv_unrecognised() {
+        let buf = [
+            0u8, 28, b's', b't', b'r', b'm', b'x', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+            15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(msg, ServerMessage::Unrecognised("strm_x".to_owned()));
+        } else {
+            panic!("STRMx message not received");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recv_enable() {
+        let buf = [0u8, 6, b'a', b'u', b'd', b'e', 0, 1];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(msg, ServerMessage::Enable(false, true));
+        } else {
+            panic!("AUDE message not received");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recv_gain() {
+        let buf = [
+            0u8, 22, b'a', b'u', b'd', b'g', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 128, 0,
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            match msg {
+                ServerMessage::Gain(left, right) => {
+                    assert_eq!(left, 1.0);
+                    assert_eq!(right, 0.5);
+                }
+                _ => panic!("GAIN message incorrect"),
+            }
+        } else {
+            panic!("AUDG message not received");
+        }
+    }
+    
+    #[tokio::test]
+    async fn test_recv_setname() {
+        let buf = [
+            0u8, 12, b's', b'e', b't', b'd', 1, b'n', b'e', b'w', b'n', b'a', b'm', b'e',
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            match msg {
+                ServerMessage::Setname(name) => {
+                    assert_eq!(name, "newname".to_owned());
+                }
+                _ => panic!("SETNAME message incorrect"),
+            }
+        } else {
+            panic!("SETD message not received");
         }
     }
     // #[tokio::test]
