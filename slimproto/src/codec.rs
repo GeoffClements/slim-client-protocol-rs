@@ -1,9 +1,15 @@
 use bytes::{buf::BufMut, Buf, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::{ClientMessage, ServerMessage};
+use crate::{
+    proto::{
+        AutoStart, Format, PcmChannels, PcmEndian, PcmSampleRate, PcmSampleSize, SpdifEnable,
+        StreamFlags, TransType,
+    },
+    ClientMessage, ServerMessage,
+};
 
-use std::{convert::TryInto, io, net::Ipv4Addr};
+use std::{convert::TryInto, io, net::Ipv4Addr, time::Duration};
 
 pub struct SlimCodec;
 
@@ -155,23 +161,117 @@ impl From<BytesMut> for ServerMessage {
                     }
 
                     's' => {
-                        let frame = buf.split_to(14);
+                        let autostart = match buf.split_to(1)[0] as char {
+                            '0' => AutoStart::None,
+                            '1' => AutoStart::Auto,
+                            '2' => AutoStart::Direct,
+                            '3' => AutoStart::AutoDirect,
+                            _ => return ServerMessage::Error,
+                        };
+
+                        let format = match buf.split_to(1)[0] as char {
+                            'p' => Format::Pcm,
+                            'm' => Format::Mp3,
+                            'f' => Format::Flac,
+                            'w' => Format::Wma,
+                            'o' => Format::Ogg,
+                            'a' => Format::Aac,
+                            'l' => Format::Alac,
+                            _ => return ServerMessage::Error,
+                        };
+
+                        let pcmsamplesize = match buf.split_to(1)[0] as char {
+                            '0' => PcmSampleSize::Eight,
+                            '1' => PcmSampleSize::Sixteen,
+                            '2' => PcmSampleSize::Twenty,
+                            '3' => PcmSampleSize::ThirtyTwo,
+                            '?' => PcmSampleSize::SelfDescribing,
+                            _ => return ServerMessage::Error,
+                        };
+
+                        let pcmsamplerate = match buf.split_to(1)[0] as char {
+                            '0' => PcmSampleRate::Rate(11_000),
+                            '1' => PcmSampleRate::Rate(22_000),
+                            '2' => PcmSampleRate::Rate(32_000),
+                            '3' => PcmSampleRate::Rate(44_100),
+                            '4' => PcmSampleRate::Rate(48_000),
+                            '5' => PcmSampleRate::Rate(8_000),
+                            '6' => PcmSampleRate::Rate(12_000),
+                            '7' => PcmSampleRate::Rate(16_000),
+                            '8' => PcmSampleRate::Rate(24_000),
+                            '9' => PcmSampleRate::Rate(96_000),
+                            '?' => PcmSampleRate::SelfDescribing,
+                            _ => return ServerMessage::Error,
+                        };
+
+                        let pcmchannels = match buf.split_to(1)[0] as char {
+                            '1' => PcmChannels::Mono,
+                            '2' => PcmChannels::Stereo,
+                            '?' => PcmChannels::SelfDescribing,
+                            _ => return ServerMessage::Error,
+                        };
+
+                        let pcmendian = match buf.split_to(1)[0] as char {
+                            '0' => PcmEndian::Big,
+                            '1' => PcmEndian::Little,
+                            '?' => PcmEndian::SelfDescribing,
+                            _ => return ServerMessage::Error,
+                        };
+
+                        let threshold = buf.split_to(1)[0] as u32 * 1024u32;
+
+                        let spdif_enable = match buf.split_to(1)[0] as char {
+                            '0' => SpdifEnable::Auto,
+                            '1' => SpdifEnable::On,
+                            '2' => SpdifEnable::Off,
+                            _ => return ServerMessage::Error,
+                        };
+
+                        let trans_period = Duration::from_secs(buf.split_to(1)[0] as u64);
+
+                        let trans_type = match buf.split_to(1)[0] as char {
+                            '0' => TransType::None,
+                            '1' => TransType::Crossfade,
+                            '2' => TransType::FadeIn,
+                            '3' => TransType::FadeOut,
+                            '4' => TransType::FadeInOut,
+                            _ => return ServerMessage::Error,
+                        };
+
+                        let flags = StreamFlags::from_bits(buf.split_to(1)[0])
+                            .unwrap_or(StreamFlags::empty());
+
+                        let output_threshold = Duration::from_millis(buf.split_to(1)[0] as u64);
+
                         let replay_gain = buf.split_to(4).get_u32() as f64 / GAIN_FACTOR;
+
                         let server_port = buf.split_to(2).get_u16();
+
                         let server_ip = Ipv4Addr::from(buf.split_to(4).get_u32());
+
                         let http_headers = if buf.len() > 0 {
                             buf[..].into_iter().map(|c| *c as char).collect()
                         } else {
                             String::new()
                         };
+
                         ServerMessage::Stream {
-                            autostart: frame[1] == b'1' || frame[1] == b'3',
-                            threshold: frame[7] as u32, // kbytes
-                            output_threshold: frame[12] as u64 * 100_000_000, // nanoseconds
-                            replay_gain: replay_gain,
-                            server_port: server_port,
-                            server_ip: server_ip,
-                            http_headers: http_headers,
+                            autostart,
+                            format,
+                            pcmsamplesize,
+                            pcmsamplerate,
+                            pcmchannels,
+                            pcmendian,
+                            threshold,
+                            spdif_enable,
+                            trans_period,
+                            trans_type,
+                            flags,
+                            output_threshold,
+                            replay_gain,
+                            server_port,
+                            server_ip,
+                            http_headers,
                         }
                     }
 
@@ -478,7 +578,6 @@ mod tests {
             panic!("AUDG message not received");
         }
     }
-    
     #[tokio::test]
     async fn test_recv_setname() {
         let buf = [

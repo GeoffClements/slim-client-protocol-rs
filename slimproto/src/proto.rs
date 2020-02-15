@@ -1,11 +1,12 @@
 use mac_address::MacAddress;
 use tokio::{io::BufStream, net::TcpStream};
 use tokio_util::codec::Framed;
+use bitflags::bitflags;
 
 use crate::codec::SlimCodec;
 use crate::discovery;
 
-use std::{io, net::Ipv4Addr};
+use std::{io, net::Ipv4Addr, time::Duration};
 
 pub struct StatData {
     pub crlf: u8,
@@ -42,6 +43,78 @@ pub enum ClientMessage {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum AutoStart {
+    None,
+    Auto,
+    Direct,
+    AutoDirect,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Format {
+    Pcm,
+    Mp3,
+    Flac,
+    Wma,
+    Ogg,
+    Aac,
+    Alac,
+}
+#[derive(Debug, PartialEq)]
+pub enum PcmSampleSize {
+    Eight,
+    Sixteen,
+    Twenty,
+    ThirtyTwo,
+    SelfDescribing,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum PcmSampleRate {
+    Rate(u32),
+    SelfDescribing,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum PcmChannels {
+    Mono,
+    Stereo,
+    SelfDescribing,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum PcmEndian {
+    Big,
+    Little,
+    SelfDescribing,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum SpdifEnable {
+    Auto,
+    On,
+    Off,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TransType {
+    None,
+    Crossfade,
+    FadeIn,
+    FadeOut,
+    FadeInOut,
+}
+
+bitflags! {
+    pub struct StreamFlags: u8 {
+        const INF_LOOP = 0b1000_0000;
+        const NO_RESTART_DECODER = 0b0100_0000;
+        const INVERT_POLARITY_LEFT = 0b0000_0001;
+        const INVERT_POLARITY_RIGHT = 0b0000_0010;
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ServerMessage {
     Serv {
         ip_address: Ipv4Addr,
@@ -49,9 +122,18 @@ pub enum ServerMessage {
     },
     Status(u32),
     Stream {
-        autostart: bool,
+        autostart: AutoStart,
+        format: Format,
+        pcmsamplesize: PcmSampleSize,
+        pcmsamplerate: PcmSampleRate,
+        pcmchannels: PcmChannels,
+        pcmendian: PcmEndian,
         threshold: u32,
-        output_threshold: u64,
+        spdif_enable: SpdifEnable,
+        trans_period: Duration,
+        trans_type: TransType,
+        flags: StreamFlags,
+        output_threshold: Duration,
         replay_gain: f64,
         server_port: u16,
         server_ip: Ipv4Addr,
