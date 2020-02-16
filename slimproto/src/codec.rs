@@ -243,6 +243,8 @@ impl From<BytesMut> for ServerMessage {
 
                         let output_threshold = Duration::from_millis(buf.split_to(1)[0] as u64);
 
+                        let _ = buf.split_to(1);
+
                         let replay_gain = buf.split_to(4).get_u32() as f64 / GAIN_FACTOR;
 
                         let server_port = buf.split_to(2).get_u16();
@@ -595,24 +597,40 @@ mod tests {
             panic!("SETD message not received");
         }
     }
-    // #[tokio::test]
-    // async fn test_recv_strm() {
-    //     let buf = [
-    //         0u8, 27, b's', b't', b'r', b'm', b's', 1, b'f', b'?', b'?', b'?', 12, 0, 0, 0, 0, 6, 0, 0, 1, 0, 0, 35, 41, 172, 16, 1, 2,
-    //     ];
-    //     let mut framed = FramedRead::new(&buf[..], SlimCodec);
-    //     if let Some(Ok(msg)) = framed.next().await {
-    //         assert_eq!(
-    //             msg,
-    //             ServerMessage::Serv {
-    //                 ip_address: Ipv4Addr::new(172, 16, 1, 2),
-    //                 sync_group_id: Some("sync".to_owned())
-    //             }
-    //         );
-    //     } else {
-    //         panic!("SERV message not received");
-    //     }
-    // }
+
+    #[tokio::test]
+    async fn test_recv_strm() {
+        let buf = [
+            0u8, 31, b's', b't', b'r', b'm', b's', b'1', b'm', b'2', b'3', b'?', b'0', 1, b'2', 3,
+            b'4', 1, 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2, b'a', b'b', b'c',
+        ];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(
+                msg,
+                ServerMessage::Stream {
+                    autostart: AutoStart::Auto,
+                    format: Format::Mp3,
+                    pcmsamplesize: PcmSampleSize::Twenty,
+                    pcmsamplerate: PcmSampleRate::Rate(44100),
+                    pcmchannels: PcmChannels::SelfDescribing,
+                    pcmendian: PcmEndian::Big,
+                    threshold: 1024,
+                    spdif_enable: SpdifEnable::Off,
+                    trans_period: Duration::from_secs(3),
+                    trans_type: TransType::FadeInOut,
+                    flags: StreamFlags::INVERT_POLARITY_LEFT,
+                    output_threshold: Duration::from_millis(2),
+                    replay_gain: 1.5,
+                    server_port: 9001,
+                    server_ip: Ipv4Addr::new(172, 16, 1, 2),
+                    http_headers: String::from("abc"),
+                }
+            );
+        } else {
+            panic!("SERV message not received");
+        }
+    }
 
     async fn do_send(buf: &mut [u8], frame: ClientMessage) {
         let buf = Cursor::new(&mut buf[..]);
