@@ -628,7 +628,7 @@ mod tests {
                 }
             );
         } else {
-            panic!("SERV message not received");
+            panic!("STRMs message not received");
         }
     }
 

@@ -1,7 +1,7 @@
+use bitflags::bitflags;
 use mac_address::MacAddress;
 use tokio::{io::BufStream, net::TcpStream};
 use tokio_util::codec::Framed;
-use bitflags::bitflags;
 
 use crate::codec::SlimCodec;
 use crate::discovery;
@@ -152,21 +152,81 @@ pub enum ServerMessage {
 }
 
 pub struct SlimProto {
+    deviceid: u8,
+    mac: MacAddress,
+    wlanchannellist: [u8; 2],
+    wma: bool,
+    wmap: bool,
+    wmal: bool,
+    ogg: bool,
+    flc: bool,
+    pcm: bool,
+    aif: bool,
+    mp3: bool,
+    alc: bool,
+    aac: bool,
+    maxsamplerate: u32,
+    model: Option<String>,
+    modelname: Option<String>,
+    rhap: bool,
+    accurateplaypoints: bool,
+    syncgroupid: Option<String>,
+    hasdigitalout: bool,
+    haspreamp: bool,
+    hasdisabledac: bool,
     framed: Framed<BufStream<TcpStream>, SlimCodec>,
 }
 
-impl SlimProto {
-    pub async fn new(server_addr: Option<Ipv4Addr>) -> io::Result<Self> {
+#[derive(Default)]
+pub struct SlimProtoBuilder {
+    server: Option<Ipv4Addr>,
+    deviceid: Option<u8>,
+    mac: Option<MacAddress>,
+    wlanchannellist: [u8; 2],
+    wma: bool,
+    wmap: bool,
+    wmal: bool,
+    ogg: bool,
+    flc: bool,
+    pcm: bool,
+    aif: bool,
+    mp3: bool,
+    alc: bool,
+    aac: bool,
+    maxsamplerate: u32,
+    model: Option<String>,
+    modelname: Option<String>,
+    rhap: bool,
+    accurateplaypoints: bool,
+    syncgroupid: Option<String>,
+    hasdigitalout: bool,
+    haspreamp: bool,
+    hasdisabledac: bool,
+}
+
+impl SlimProtoBuilder {
+    pub fn new() -> Self {
+        SlimProtoBuilder::default()
+    }
+
+    pub fn server(&mut self, ip: Ipv4Addr) -> &mut Self {
+        self.server = Some(ip);
+        self
+    }
+
+    pub async fn build(self) -> io::Result<SlimProto> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
         const WRITEBUFSIZE: usize = 1024;
 
-        let server_addr =
-            if let Some(addr) = server_addr.or(discovery::discover(None).await?.map(|(a, _)| a)) {
-                addr
-            } else {
-                unreachable!() // because discover has no timeout
-            };
+        let server_addr = if let Some(addr) = self
+            .server
+            .or(discovery::discover(None).await?.map(|(a, _)| a))
+        {
+            addr
+        } else {
+            unreachable!() // because discover has no timeout
+        };
 
         let server_tcp = TcpStream::connect((server_addr, SLIM_PORT)).await?;
         let framed = Framed::new(
@@ -174,6 +234,14 @@ impl SlimProto {
             SlimCodec,
         );
 
-        Ok(SlimProto { framed })
+        let slimproto = SlimProto {
+            deviceid: self.deviceid.unwrap_or(3),
+            framed: framed,
+        };
+
+        let helo = ClientMessage::Helo {};
+        slimproto.send(helo).await;
+
+        Ok(slimproto)
     }
 }
