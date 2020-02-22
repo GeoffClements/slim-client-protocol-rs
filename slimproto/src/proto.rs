@@ -1,5 +1,7 @@
 use bitflags::bitflags;
-use mac_address::MacAddress;
+use futures::SinkExt;
+use itertools::Itertools;
+use mac_address::{get_mac_address, MacAddress};
 use std::fmt;
 use tokio::{io::BufStream, net::TcpStream};
 use tokio_util::codec::Framed;
@@ -30,9 +32,6 @@ pub enum ClientMessage {
         device_id: u8,
         revision: u8,
         mac: MacAddress,
-        uuid: [u8; 16],
-        wlan_channel_list: u16,
-        bytes_received: u64,
         capabilities: String,
     },
     Stat {
@@ -197,6 +196,22 @@ pub struct SlimProto {
     capabilities: Vec<Capability>,
 }
 
+impl SlimProto {
+    async fn send_helo(&mut self) -> io::Result<()> {
+        let helo = ClientMessage::Helo {
+            device_id: 12,
+            revision: 0,
+            mac: match get_mac_address() {
+                Ok(Some(mac)) => mac,
+                _ => MacAddress::new([1, 2, 3, 4, 5, 6]),
+            },
+            capabilities: self.capabilities.iter().join(","),
+        };
+
+        self.framed.send(helo).await
+    }
+}
+
 #[derive(Default)]
 pub struct SlimProtoBuilder {
     server: Option<Ipv4Addr>,
@@ -333,7 +348,7 @@ impl SlimProtoBuilder {
         self
     }
 
-    pub async fn build(self) -> io::Result<SlimProto> {
+    pub async fn build(self, helo: bool) -> io::Result<SlimProto> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
         const WRITEBUFSIZE: usize = 1024;
@@ -353,10 +368,14 @@ impl SlimProtoBuilder {
             SlimCodec,
         );
 
-        let slimproto = SlimProto {
+        let mut slimproto = SlimProto {
             framed: framed,
             capabilities: self.capabilities,
         };
+
+        if helo {
+            slimproto.send_helo().await?;
+        }
 
         Ok(slimproto)
     }

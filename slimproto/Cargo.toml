@@ -9,6 +9,7 @@ futures = '0.3'
 bytes = '0.5'
 mac_address = '1.0'
 bitflags = "1.2"
+itertools = "0.8"
 
 [dependencies.tokio]
 version = '0.2'
