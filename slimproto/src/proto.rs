@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 use mac_address::MacAddress;
+use std::fmt;
 use tokio::{io::BufStream, net::TcpStream};
 use tokio_util::codec::Framed;
 
@@ -151,57 +152,55 @@ pub enum ServerMessage {
     Error,
 }
 
+#[derive(Clone)]
+enum CapValue {
+    Bool(bool),
+    Number(u32),
+    String(String),
+}
+
+#[derive(Clone)]
+pub struct Capability {
+    name: String,
+    value: CapValue,
+}
+
+impl Capability {
+    fn new<T: fmt::Display>(name: T, value: CapValue) -> Self {
+        Capability {
+            name: name.to_string(),
+            value: value,
+        }
+    }
+}
+
+impl fmt::Display for Capability {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match &self.value {
+            CapValue::Bool(ref val) => {
+                if *val {
+                    "1"
+                } else {
+                    "0"
+                }
+            }
+            .to_string(),
+            CapValue::Number(ref val) => val.to_string(),
+            CapValue::String(ref val) => val.to_string(),
+        };
+        write!(f, "{}={}", self.name, value)
+    }
+}
+
 pub struct SlimProto {
-    deviceid: u8,
-    mac: MacAddress,
-    wlanchannellist: [u8; 2],
-    wma: bool,
-    wmap: bool,
-    wmal: bool,
-    ogg: bool,
-    flc: bool,
-    pcm: bool,
-    aif: bool,
-    mp3: bool,
-    alc: bool,
-    aac: bool,
-    maxsamplerate: u32,
-    model: Option<String>,
-    modelname: Option<String>,
-    rhap: bool,
-    accurateplaypoints: bool,
-    syncgroupid: Option<String>,
-    hasdigitalout: bool,
-    haspreamp: bool,
-    hasdisabledac: bool,
     framed: Framed<BufStream<TcpStream>, SlimCodec>,
+    capabilities: Vec<Capability>,
 }
 
 #[derive(Default)]
 pub struct SlimProtoBuilder {
     server: Option<Ipv4Addr>,
-    deviceid: Option<u8>,
-    mac: Option<MacAddress>,
-    wlanchannellist: [u8; 2],
-    wma: bool,
-    wmap: bool,
-    wmal: bool,
-    ogg: bool,
-    flc: bool,
-    pcm: bool,
-    aif: bool,
-    mp3: bool,
-    alc: bool,
-    aac: bool,
-    maxsamplerate: u32,
-    model: Option<String>,
-    modelname: Option<String>,
-    rhap: bool,
-    accurateplaypoints: bool,
-    syncgroupid: Option<String>,
-    hasdigitalout: bool,
-    haspreamp: bool,
-    hasdisabledac: bool,
+    capabilities: Vec<Capability>,
 }
 
 impl SlimProtoBuilder {
@@ -211,6 +210,126 @@ impl SlimProtoBuilder {
 
     pub fn server(&mut self, ip: Ipv4Addr) -> &mut Self {
         self.server = Some(ip);
+        self
+    }
+
+    pub fn wma(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("wma", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn wmap(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("wmap", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn wmal(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("wmal", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn ogg(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("ogg", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn flc(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("flc", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn pcm(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("pcm", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn aif(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("aif", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn mp3(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("mp3", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn alc(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("alc", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn aac(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("aac", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn rhap(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("rhap", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn accurateplaypoints(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("accurateplaypoints", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn hasdigitalout(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("hasdigitalout", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn haspreamp(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("haspreamp", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn hasdisabledac(&mut self, en: bool) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("hasdisabledac", CapValue::Bool(en)));
+        self
+    }
+
+    pub fn model<T: fmt::Display>(&mut self, model: T) -> &mut Self {
+        self.capabilities.push(Capability::new(
+            "model",
+            CapValue::String(model.to_string()),
+        ));
+        self
+    }
+
+    pub fn modelname<T: fmt::Display>(&mut self, model: T) -> &mut Self {
+        self.capabilities.push(Capability::new(
+            "modelname",
+            CapValue::String(model.to_string()),
+        ));
+        self
+    }
+
+    pub fn syncgroupid<T: fmt::Display>(&mut self, model: T) -> &mut Self {
+        self.capabilities.push(Capability::new(
+            "syncgroupid",
+            CapValue::String(model.to_string()),
+        ));
+        self
+    }
+
+    pub fn maxsamplerate(&mut self, val: u32) -> &mut Self {
+        self.capabilities
+            .push(Capability::new("maxsamplerate", CapValue::Number(val)));
         self
     }
 
@@ -235,12 +354,9 @@ impl SlimProtoBuilder {
         );
 
         let slimproto = SlimProto {
-            deviceid: self.deviceid.unwrap_or(3),
             framed: framed,
+            capabilities: self.capabilities,
         };
-
-        let helo = ClientMessage::Helo {};
-        slimproto.send(helo).await;
 
         Ok(slimproto)
     }
