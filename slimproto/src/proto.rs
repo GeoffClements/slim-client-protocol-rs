@@ -1,15 +1,26 @@
 use bitflags::bitflags;
 use futures::SinkExt;
+use futures_core::Stream;
 use itertools::Itertools;
 use mac_address::{get_mac_address, MacAddress};
 use std::fmt;
-use tokio::{io::BufStream, net::TcpStream};
-use tokio_util::codec::Framed;
+use tokio::{
+    io::{AsyncRead, AsyncWrite, BufStream},
+    net::TcpStream,
+};
+use tokio_util::codec::{Decoder, Encoder, Framed};
 
 use crate::codec::SlimCodec;
 use crate::discovery;
 
-use std::{io, net::Ipv4Addr, time::Duration};
+use std::{
+    io,
+    marker::Unpin,
+    net::Ipv4Addr,
+    pin::Pin,
+    task::{Context, Poll},
+    time::Duration,
+};
 
 pub struct StatData {
     pub crlf: u8,
@@ -191,13 +202,21 @@ impl fmt::Display for Capability {
     }
 }
 
-pub struct SlimProto {
-    framed: Framed<BufStream<TcpStream>, SlimCodec>,
+pub struct SlimProto<T, U>
+where
+    T: AsyncRead + AsyncWrite,
+    U: Decoder + Encoder,
+{
+    framed: Framed<T, U>,
     capabilities: Vec<Capability>,
 }
 
-impl SlimProto {
-    async fn send_helo(&mut self) -> io::Result<()> {
+impl<T, U> SlimProto<T, U>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+    U: Decoder + Encoder,
+{
+    async fn send_helo(&mut self) {
         let helo = ClientMessage::Helo {
             device_id: 12,
             revision: 0,
@@ -208,7 +227,19 @@ impl SlimProto {
             capabilities: self.capabilities.iter().join(","),
         };
 
-        self.framed.send(helo).await
+        self.framed.send(helo).await;
+    }
+}
+
+impl<T, U> Stream for SlimProto<T, U>
+where
+    T: AsyncRead + AsyncWrite,
+    U: Decoder + Encoder,
+{
+    type Item = <U as Decoder>::Item;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        self.framed.poll_next(cx)
     }
 }
 
@@ -218,7 +249,11 @@ pub struct SlimProtoBuilder {
     capabilities: Vec<Capability>,
 }
 
-impl SlimProtoBuilder {
+impl<T, U> SlimProtoBuilder
+where
+    T: AsyncRead + AsyncWrite,
+    U: Decoder + Encoder,
+{
     pub fn new() -> Self {
         SlimProtoBuilder::default()
     }
@@ -318,7 +353,7 @@ impl SlimProtoBuilder {
         self
     }
 
-    pub fn model<T: fmt::Display>(&mut self, model: T) -> &mut Self {
+    pub fn model<D: fmt::Display>(&mut self, model: D) -> &mut Self {
         self.capabilities.push(Capability::new(
             "model",
             CapValue::String(model.to_string()),
@@ -326,7 +361,7 @@ impl SlimProtoBuilder {
         self
     }
 
-    pub fn modelname<T: fmt::Display>(&mut self, model: T) -> &mut Self {
+    pub fn modelname<D: fmt::Display>(&mut self, model: D) -> &mut Self {
         self.capabilities.push(Capability::new(
             "modelname",
             CapValue::String(model.to_string()),
@@ -334,7 +369,7 @@ impl SlimProtoBuilder {
         self
     }
 
-    pub fn syncgroupid<T: fmt::Display>(&mut self, model: T) -> &mut Self {
+    pub fn syncgroupid<D: fmt::Display>(&mut self, model: D) -> &mut Self {
         self.capabilities.push(Capability::new(
             "syncgroupid",
             CapValue::String(model.to_string()),
@@ -348,7 +383,7 @@ impl SlimProtoBuilder {
         self
     }
 
-    pub async fn build(self, helo: bool) -> io::Result<SlimProto> {
+    pub async fn build(self, helo: bool) -> io::Result<SlimProto<BufStream<TcpStream>, SlimCodec>> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
         const WRITEBUFSIZE: usize = 1024;
@@ -374,7 +409,7 @@ impl SlimProtoBuilder {
         };
 
         if helo {
-            slimproto.send_helo().await?;
+            slimproto.send_helo().await;
         }
 
         Ok(slimproto)
