@@ -1,6 +1,5 @@
 use bitflags::bitflags;
-use futures::SinkExt;
-use futures_core::Stream;
+use futures::{Stream, Sink, SinkExt};
 use itertools::Itertools;
 use mac_address::{get_mac_address, MacAddress};
 use std::fmt;
@@ -202,20 +201,12 @@ impl fmt::Display for Capability {
     }
 }
 
-pub struct SlimProto<T, U>
-where
-    T: AsyncRead + AsyncWrite,
-    U: Decoder + Encoder,
-{
-    framed: Framed<T, U>,
+pub struct SlimProto {
+    framed: Framed<BufStream<TcpStream>, SlimCodec>,
     capabilities: Vec<Capability>,
 }
 
-impl<T, U> SlimProto<T, U>
-where
-    T: AsyncRead + AsyncWrite + Unpin,
-    U: Decoder + Encoder,
-{
+impl SlimProto {
     async fn send_helo(&mut self) {
         let helo = ClientMessage::Helo {
             device_id: 12,
@@ -231,15 +222,31 @@ where
     }
 }
 
-impl<T, U> Stream for SlimProto<T, U>
-where
-    T: AsyncRead + AsyncWrite,
-    U: Decoder + Encoder,
-{
-    type Item = <U as Decoder>::Item;
+impl Stream for SlimProto {
+    type Item = <SlimCodec as Decoder>::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         self.framed.poll_next(cx)
+    }
+}
+
+impl Sink<<SlimCodec as Encoder>::Item> for SlimProto {
+    type Error = io::Error;
+    
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+         self.framed.poll_ready(cx)
+    }
+    
+    fn start_send(self: Pin<&mut Self>, item: ClientMessage) -> Result<(), Self::Error> {
+        self.framed.start_send(item)
+    }
+    
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        self.framed.poll_flush(cx)
+    }
+    
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        self.framed.poll_close(cx)
     }
 }
 
@@ -249,11 +256,7 @@ pub struct SlimProtoBuilder {
     capabilities: Vec<Capability>,
 }
 
-impl<T, U> SlimProtoBuilder
-where
-    T: AsyncRead + AsyncWrite,
-    U: Decoder + Encoder,
-{
+impl SlimProtoBuilder {
     pub fn new() -> Self {
         SlimProtoBuilder::default()
     }
@@ -383,7 +386,7 @@ where
         self
     }
 
-    pub async fn build(self, helo: bool) -> io::Result<SlimProto<BufStream<TcpStream>, SlimCodec>> {
+    pub async fn build(self, helo: bool) -> io::Result<SlimProto> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
         const WRITEBUFSIZE: usize = 1024;
