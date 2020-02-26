@@ -1,9 +1,9 @@
 use bitflags::bitflags;
-use futures::{Sink, SinkExt, Stream};
+use futures::{Sink, SinkExt};
 use itertools::Itertools;
 use mac_address::{get_mac_address, MacAddress};
 use pin_project_lite::pin_project;
-use tokio::{io::BufStream, net::TcpStream};
+use tokio::{io::BufStream, net::TcpStream, stream::Stream};
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
 use crate::codec::SlimCodec;
