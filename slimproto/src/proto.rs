@@ -1,20 +1,16 @@
 use bitflags::bitflags;
-use futures::{Stream, Sink, SinkExt};
+use futures::{Sink, SinkExt, Stream};
 use itertools::Itertools;
 use mac_address::{get_mac_address, MacAddress};
-use std::fmt;
-use tokio::{
-    io::{AsyncRead, AsyncWrite, BufStream},
-    net::TcpStream,
-};
+use pin_project_lite::pin_project;
+use tokio::{io::BufStream, net::TcpStream};
 use tokio_util::codec::{Decoder, Encoder, Framed};
 
 use crate::codec::SlimCodec;
 use crate::discovery;
 
 use std::{
-    io,
-    marker::Unpin,
+    fmt, io,
     net::Ipv4Addr,
     pin::Pin,
     task::{Context, Poll},
@@ -201,9 +197,12 @@ impl fmt::Display for Capability {
     }
 }
 
-pub struct SlimProto {
-    framed: Framed<BufStream<TcpStream>, SlimCodec>,
-    capabilities: Vec<Capability>,
+pin_project! {
+    pub struct SlimProto {
+        #[pin]
+        framed: Framed<BufStream<TcpStream>, SlimCodec>,
+        capabilities: Vec<Capability>,
+    }
 }
 
 impl SlimProto {
@@ -218,35 +217,36 @@ impl SlimProto {
             capabilities: self.capabilities.iter().join(","),
         };
 
-        self.framed.send(helo).await;
+        let _ = self.framed.send(helo).await;
     }
 }
 
 impl Stream for SlimProto {
-    type Item = <SlimCodec as Decoder>::Item;
+    type Item = io::Result<<SlimCodec as Decoder>::Item>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        self.framed.poll_next(cx)
+        self.project().framed.poll_next(cx)
     }
 }
 
 impl Sink<<SlimCodec as Encoder>::Item> for SlimProto {
     type Error = io::Error;
-    
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-         self.framed.poll_ready(cx)
+        self.project().framed.poll_ready(cx)
     }
-    
-    fn start_send(self: Pin<&mut Self>, item: ClientMessage) -> Result<(), Self::Error> {
-        self.framed.start_send(item)
+
+    fn start_send(
+        self: Pin<&mut Self>,
+        item: <SlimCodec as Encoder>::Item,
+    ) -> Result<(), Self::Error> {
+        self.project().framed.start_send(item)
     }
-    
+
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        self.framed.poll_flush(cx)
+        self.project().framed.poll_flush(cx)
     }
-    
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        self.framed.poll_close(cx)
+        self.project().framed.poll_close(cx)
     }
 }
 

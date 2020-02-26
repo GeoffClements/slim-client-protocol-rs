@@ -6,11 +6,12 @@ edition = '2018'
 
 [dependencies]
 futures = '0.3'
-futures-core = "0.3"
+futures-core = '0.3'
 bytes = '0.5'
 mac_address = '1.0'
-bitflags = "1.2"
-itertools = "0.8"
+bitflags = '1.2'
+itertools = '0.8'
+pin-project-lite = '0.1'
 
 [dependencies.tokio]
 version = '0.2'
