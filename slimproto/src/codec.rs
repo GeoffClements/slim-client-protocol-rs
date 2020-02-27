@@ -67,12 +67,26 @@ impl From<ClientMessage> for BytesMut {
                 device_id,
                 revision,
                 mac,
+                uuid,
+                wlan_channel_list,
+                bytes_received,
+                language,
                 capabilities,
             } => {
                 msg.put("HELO".as_bytes());
                 frame.put_u8(device_id);
                 frame.put_u8(revision);
                 frame.put(mac.bytes().as_ref());
+                frame.put(uuid.as_ref());
+                frame.put_u16(wlan_channel_list);
+                frame.put_u64(bytes_received);
+                frame.put(
+                    language
+                        .iter()
+                        .map(|c| *c as u8)
+                        .collect::<Vec<u8>>()
+                        .as_ref(),
+                );
                 frame.put(capabilities.as_bytes());
             }
 
@@ -357,16 +371,25 @@ mod tests {
             device_id: 0,
             revision: 1,
             mac: MacAddress::new([1, 2, 3, 4, 5, 6]),
+            uuid: [7u8; 16],
+            wlan_channel_list: 0x89AB,
+            bytes_received: 1234,
+            language: ['u', 'k'],
             capabilities: "abcd".to_owned(),
         };
 
-        let mut buf = [0u8; 20];
+        let mut buf = [0u8; 48];
         do_send(&mut buf, helo).await;
         assert_eq!(
-            &buf[..],
+            &buf[..32],
             &[
-                b'H', b'E', b'L', b'O', 0, 0, 0, 12, 0, 1, 1, 2, 3, 4, 5, 6, b'a', b'b', b'c', b'd'
+                b'H', b'E', b'L', b'O', 0, 0, 0, 40, 0, 1, 1, 2, 3, 4, 5, 6, 7, 7, 7, 7, 7, 7, 7,
+                7, 7, 7, 7, 7, 7, 7, 7, 7,
             ]
+        );
+        assert_eq!(
+            &buf[32..],
+            &[137, 171, 0, 0, 0, 0, 0, 0, 4, 210, b'u', b'k', b'a', b'b', b'c', b'd']
         );
     }
 

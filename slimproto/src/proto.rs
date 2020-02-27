@@ -38,6 +38,10 @@ pub enum ClientMessage {
         device_id: u8,
         revision: u8,
         mac: MacAddress,
+        uuid: [u8; 16],
+        wlan_channel_list: u16,
+        bytes_received: u64,
+        language: [char; 2],
         capabilities: String,
     },
     Stat {
@@ -206,7 +210,7 @@ pin_project! {
 }
 
 impl SlimProto {
-    async fn send_helo(&mut self) {
+    async fn send_helo(&mut self, bytes_rx: u64, reconnect: bool) {
         let helo = ClientMessage::Helo {
             device_id: 12,
             revision: 0,
@@ -214,6 +218,10 @@ impl SlimProto {
                 Ok(Some(mac)) => mac,
                 _ => MacAddress::new([1, 2, 3, 4, 5, 6]),
             },
+            uuid: [0u8; 16],
+            wlan_channel_list: if reconnect {0x4000} else {0},
+            bytes_received: bytes_rx,
+            language: ['g', 'b'],
             capabilities: self.capabilities.iter().join(","),
         };
 
@@ -253,6 +261,8 @@ impl Sink<<SlimCodec as Encoder>::Item> for SlimProto {
 #[derive(Default)]
 pub struct SlimProtoBuilder {
     server: Option<Ipv4Addr>,
+    reconnect: bool,
+    bytes_rx: u64,
     capabilities: Vec<Capability>,
 }
 
@@ -386,6 +396,16 @@ impl SlimProtoBuilder {
         self
     }
 
+    pub fn reconnect(&mut self, reconnect: bool) -> &mut Self {
+        self.reconnect = reconnect;
+        self
+    }
+
+    pub fn bytes_received(&mut self, bytes_rx: u64) -> &mut Self {
+        self.bytes_rx= bytes_rx;
+        self
+    }
+
     pub async fn build(self, helo: bool) -> io::Result<SlimProto> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
@@ -412,7 +432,7 @@ impl SlimProtoBuilder {
         };
 
         if helo {
-            slimproto.send_helo().await;
+            slimproto.send_helo(self.bytes_rx, self.reconnect).await;
         }
 
         Ok(slimproto)
