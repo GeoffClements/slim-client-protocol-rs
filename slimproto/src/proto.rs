@@ -23,13 +23,13 @@ pub struct StatData {
     pub fullness: u32,
     pub bytes_received: u64,
     pub sig_strength: u16,
-    pub jiffies: u32,
+    pub jiffies: Duration,
     pub output_buffer_size: u32,
     pub output_buffer_fullness: u32,
     pub elapsed_seconds: u32,
     pub voltage: u16,
     pub elapsed_milliseconds: u32,
-    pub timestamp: u32,
+    pub timestamp: Duration,
     pub error_code: u16,
 }
 
@@ -130,7 +130,7 @@ pub enum ServerMessage {
         ip_address: Ipv4Addr,
         sync_group_id: Option<String>,
     },
-    Status(u32),
+    Status(Duration),
     Stream {
         autostart: AutoStart,
         format: Format,
@@ -221,7 +221,7 @@ impl SlimProto {
             uuid: [0u8; 16],
             wlan_channel_list: if reconnect {0x4000} else {0},
             bytes_received: bytes_rx,
-            language: ['g', 'b'],
+            language: ['e', 'n'],
             capabilities: self.capabilities.iter().join(","),
         };
 
@@ -271,102 +271,102 @@ impl SlimProtoBuilder {
         SlimProtoBuilder::default()
     }
 
-    pub fn server(&mut self, ip: Ipv4Addr) -> &mut Self {
+    pub fn server<'a>(&'a mut self, ip: Ipv4Addr) -> &'a mut Self {
         self.server = Some(ip);
         self
     }
 
-    pub fn wma(&mut self, en: bool) -> &mut Self {
+    pub fn wma<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("wma", CapValue::Bool(en)));
         self
     }
 
-    pub fn wmap(&mut self, en: bool) -> &mut Self {
+    pub fn wmap<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("wmap", CapValue::Bool(en)));
         self
     }
 
-    pub fn wmal(&mut self, en: bool) -> &mut Self {
+    pub fn wmal<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("wmal", CapValue::Bool(en)));
         self
     }
 
-    pub fn ogg(&mut self, en: bool) -> &mut Self {
+    pub fn ogg<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("ogg", CapValue::Bool(en)));
         self
     }
 
-    pub fn flc(&mut self, en: bool) -> &mut Self {
+    pub fn flc<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("flc", CapValue::Bool(en)));
         self
     }
 
-    pub fn pcm(&mut self, en: bool) -> &mut Self {
+    pub fn pcm<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("pcm", CapValue::Bool(en)));
         self
     }
 
-    pub fn aif(&mut self, en: bool) -> &mut Self {
+    pub fn aif<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("aif", CapValue::Bool(en)));
         self
     }
 
-    pub fn mp3(&mut self, en: bool) -> &mut Self {
+    pub fn mp3<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("mp3", CapValue::Bool(en)));
         self
     }
 
-    pub fn alc(&mut self, en: bool) -> &mut Self {
+    pub fn alc<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("alc", CapValue::Bool(en)));
         self
     }
 
-    pub fn aac(&mut self, en: bool) -> &mut Self {
+    pub fn aac<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("aac", CapValue::Bool(en)));
         self
     }
 
-    pub fn rhap(&mut self, en: bool) -> &mut Self {
+    pub fn rhap<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("rhap", CapValue::Bool(en)));
         self
     }
 
-    pub fn accurateplaypoints(&mut self, en: bool) -> &mut Self {
+    pub fn accurateplaypoints<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("accurateplaypoints", CapValue::Bool(en)));
         self
     }
 
-    pub fn hasdigitalout(&mut self, en: bool) -> &mut Self {
+    pub fn hasdigitalout<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("hasdigitalout", CapValue::Bool(en)));
         self
     }
 
-    pub fn haspreamp(&mut self, en: bool) -> &mut Self {
+    pub fn haspreamp<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("haspreamp", CapValue::Bool(en)));
         self
     }
 
-    pub fn hasdisabledac(&mut self, en: bool) -> &mut Self {
+    pub fn hasdisabledac<'a>(&'a mut self, en: bool) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("hasdisabledac", CapValue::Bool(en)));
         self
     }
 
-    pub fn model<D: fmt::Display>(&mut self, model: D) -> &mut Self {
+    pub fn model<'a, D: fmt::Display>(&'a mut self, model: D) -> &'a mut Self {
         self.capabilities.push(Capability::new(
             "model",
             CapValue::String(model.to_string()),
@@ -374,7 +374,7 @@ impl SlimProtoBuilder {
         self
     }
 
-    pub fn modelname<D: fmt::Display>(&mut self, model: D) -> &mut Self {
+    pub fn modelname<'a, D: fmt::Display>(&'a mut self, model: D) -> &'a mut Self {
         self.capabilities.push(Capability::new(
             "modelname",
             CapValue::String(model.to_string()),
@@ -382,7 +382,7 @@ impl SlimProtoBuilder {
         self
     }
 
-    pub fn syncgroupid<D: fmt::Display>(&mut self, model: D) -> &mut Self {
+    pub fn syncgroupid<'a, D: fmt::Display>(&'a mut self, model: D) -> &'a mut Self {
         self.capabilities.push(Capability::new(
             "syncgroupid",
             CapValue::String(model.to_string()),
@@ -390,23 +390,23 @@ impl SlimProtoBuilder {
         self
     }
 
-    pub fn maxsamplerate(&mut self, val: u32) -> &mut Self {
+    pub fn maxsamplerate<'a>(&'a mut self, val: u32) -> &'a mut Self {
         self.capabilities
             .push(Capability::new("maxsamplerate", CapValue::Number(val)));
         self
     }
 
-    pub fn reconnect(&mut self, reconnect: bool) -> &mut Self {
+    pub fn reconnect<'a>(&'a mut self, reconnect: bool) -> &'a mut Self {
         self.reconnect = reconnect;
         self
     }
 
-    pub fn bytes_received(&mut self, bytes_rx: u64) -> &mut Self {
+    pub fn bytes_received<'a>(&'a mut self, bytes_rx: u64) -> &'a mut Self {
         self.bytes_rx= bytes_rx;
         self
     }
 
-    pub async fn build(self, helo: bool) -> io::Result<SlimProto> {
+    pub async fn build(&self, helo: bool) -> io::Result<SlimProto> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
         const WRITEBUFSIZE: usize = 1024;
@@ -428,7 +428,7 @@ impl SlimProtoBuilder {
 
         let mut slimproto = SlimProto {
             framed: framed,
-            capabilities: self.capabilities,
+            capabilities: self.capabilities.clone(),
         };
 
         if helo {

@@ -106,13 +106,13 @@ impl From<ClientMessage> for BytesMut {
                 frame.put_u32(stat_data.fullness);
                 frame.put_u64(stat_data.bytes_received);
                 frame.put_u16(stat_data.sig_strength);
-                frame.put_u32(stat_data.jiffies);
+                frame.put_u32(stat_data.jiffies.as_millis().try_into().unwrap_or(0));
                 frame.put_u32(stat_data.output_buffer_size);
                 frame.put_u32(stat_data.output_buffer_fullness);
                 frame.put_u32(stat_data.elapsed_seconds);
                 frame.put_u16(stat_data.voltage);
                 frame.put_u32(stat_data.elapsed_milliseconds);
-                frame.put_u32(stat_data.timestamp);
+                frame.put_u32(stat_data.timestamp.as_millis().try_into().unwrap_or(0));
                 frame.put_u16(stat_data.error_code);
             }
 
@@ -164,7 +164,7 @@ impl From<BytesMut> for ServerMessage {
                 match buf.split_to(1)[0] as char {
                     't' => {
                         let _ = buf.split_to(14);
-                        let timestamp = buf.get_u32();
+                        let timestamp = Duration::from_millis(buf.get_u32() as u64);
                         ServerMessage::Status(timestamp)
                     }
 
@@ -411,13 +411,13 @@ mod tests {
             fullness: 5678,
             bytes_received: 9123,
             sig_strength: 45,
-            jiffies: 6789,
+            jiffies: Duration::from_millis(6789),
             output_buffer_size: 1234,
             output_buffer_fullness: 5678,
             elapsed_seconds: 9012,
             voltage: 3456,
             elapsed_milliseconds: 7890,
-            timestamp: 1234,
+            timestamp: Duration::from_millis(1234),
             error_code: 5678,
         };
         let stat = ClientMessage::Stat {
@@ -484,7 +484,7 @@ mod tests {
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
         if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::Status(252711186));
+            assert_eq!(msg, ServerMessage::Status(Duration::from_millis(252711186)));
         } else {
             panic!("STRMt message not received");
         }
