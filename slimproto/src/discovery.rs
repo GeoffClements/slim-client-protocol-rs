@@ -32,7 +32,7 @@ pub async fn discover(timeout: Option<Duration>) -> io::Result<Option<(Ipv4Addr,
     let mut server_tlv = HashMap::new();
     let mut buf = [0u8; UDPMAXSIZE];
     tokio::select! {
-        _ = time::delay_for(timeout.unwrap()), if timeout.is_some() => {},
+        _ = time::delay_for(timeout.unwrap_or(Duration::from_secs(1))), if timeout.is_some() => {},
         res = pings => {
             if let Err(err) = res {
                 return Err(err);

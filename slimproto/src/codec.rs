@@ -339,15 +339,15 @@ impl From<BytesMut> for ServerMessage {
                     return ServerMessage::Error;
                 }
 
-                if buf.len() > 1 {
-                    let name: String = buf[1..].into_iter().map(|c| *c as char).collect();
-                    ServerMessage::Setname(name)
-                } else {
-                    if buf[0] == 0 {
-                        ServerMessage::Queryname
+                if buf[0] == 0 {
+                    if buf.len() > 5 {
+                        let name: String = buf[1..].into_iter().map(|c| *c as char).collect();
+                        ServerMessage::Setname(name)
                     } else {
-                        ServerMessage::Error
+                        ServerMessage::Queryname
                     }
+                } else {
+                    ServerMessage::Unrecognised("This SETD is unused".to_owned())
                 }
             }
 

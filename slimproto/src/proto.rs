@@ -206,6 +206,7 @@ pin_project! {
         #[pin]
         framed: Framed<BufStream<TcpStream>, SlimCodec>,
         capabilities: Vec<Capability>,
+        pub modelname: Option<String>,
     }
 }
 
@@ -222,10 +223,18 @@ impl SlimProto {
             wlan_channel_list: if reconnect {0x4000} else {0},
             bytes_received: bytes_rx,
             language: ['e', 'n'],
-            capabilities: self.capabilities.iter().join(","),
+            capabilities: self.make_cap_string(),
         };
 
         let _ = self.framed.send(helo).await;
+    }
+
+    fn make_cap_string(&self) -> String {
+        let mut caps = self.capabilities.iter().join(",");
+        if let Some(modelname) = &self.modelname {
+            caps.push_str(format!(",ModelName={}", modelname).as_str());
+        }
+        caps
     }
 }
 
@@ -263,6 +272,7 @@ pub struct SlimProtoBuilder {
     server: Option<Ipv4Addr>,
     reconnect: bool,
     bytes_rx: u64,
+    model_name: Option<String>,
     capabilities: Vec<Capability>,
 }
 
@@ -375,10 +385,7 @@ impl SlimProtoBuilder {
     }
 
     pub fn modelname<'a, D: fmt::Display>(&'a mut self, model: D) -> &'a mut Self {
-        self.capabilities.push(Capability::new(
-            "modelname",
-            CapValue::String(model.to_string()),
-        ));
+        self.model_name = Some(model.to_string());
         self
     }
 
@@ -428,6 +435,7 @@ impl SlimProtoBuilder {
 
         let mut slimproto = SlimProto {
             framed: framed,
+            modelname: self.model_name.clone(),
             capabilities: self.capabilities.clone(),
         };
 
