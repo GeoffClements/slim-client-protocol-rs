@@ -17,6 +17,7 @@ use std::{
     time::Duration,
 };
 
+#[derive(Default)]
 pub struct StatData {
     pub crlf: u8,
     pub buffer_size: u32,
@@ -156,6 +157,7 @@ pub enum ServerMessage {
     Unpause(u32),
     Queryname,
     Setname(String),
+    DisableDac,
     Skip(u32),
     Unrecognised(String),
     Error,

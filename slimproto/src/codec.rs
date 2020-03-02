@@ -339,15 +339,22 @@ impl From<BytesMut> for ServerMessage {
                     return ServerMessage::Error;
                 }
 
-                if buf[0] == 0 {
-                    if buf.len() > 5 {
-                        let name: String = buf[1..].into_iter().map(|c| *c as char).collect();
-                        ServerMessage::Setname(name)
-                    } else {
-                        ServerMessage::Queryname
+                match buf.split_to(1)[0] {
+                    0 => {
+                        if buf.len() == 0 {
+                            ServerMessage::Queryname
+                        } else {
+                            let name: String = buf[..buf.len() - 1]
+                                .into_iter()
+                                .map(|c| *c as char)
+                                .collect();
+                            ServerMessage::Setname(name)
+                        }
                     }
-                } else {
-                    ServerMessage::Unrecognised("This SETD is unused".to_owned())
+
+                    4 => ServerMessage::DisableDac,
+
+                    v @ _ => ServerMessage::Unrecognised(format!("This SETD is unused: {}", v)),
                 }
             }
 
@@ -589,10 +596,11 @@ mod tests {
             panic!("AUDG message not received");
         }
     }
+
     #[tokio::test]
     async fn test_recv_setname() {
         let buf = [
-            0u8, 12, b's', b'e', b't', b'd', 1, b'n', b'e', b'w', b'n', b'a', b'm', b'e',
+            0u8, 13, b's', b'e', b't', b'd', 0, b'n', b'e', b'w', b'n', b'a', b'm', b'e', 0,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
         if let Some(Ok(msg)) = framed.next().await {
@@ -602,6 +610,28 @@ mod tests {
                 }
                 _ => panic!("SETNAME message incorrect"),
             }
+        } else {
+            panic!("SETD message not received");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recv_queryname() {
+        let buf = [0u8, 5, b's', b'e', b't', b'd', 0];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(msg, ServerMessage::Queryname);
+        } else {
+            panic!("SETD message not received");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recv_disabledac() {
+        let buf = [0u8, 5, b's', b'e', b't', b'd', 4];
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        if let Some(Ok(msg)) = framed.next().await {
+            assert_eq!(msg, ServerMessage::DisableDac);
         } else {
             panic!("SETD message not received");
         }
