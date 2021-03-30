@@ -1,12 +1,10 @@
-use tokio::{
-    net::{udp::SendHalf, UdpSocket},
-    time,
-};
+use tokio::{net::UdpSocket, time};
 
 use std::{
     collections::HashMap,
     io,
     net::{IpAddr, Ipv4Addr},
+    sync::Arc,
     time::Duration,
 };
 
@@ -25,22 +23,21 @@ pub async fn discover(timeout: Option<Duration>) -> io::Result<Option<(Ipv4Addr,
 
     let cx = UdpSocket::bind((Ipv4Addr::new(0, 0, 0, 0), 0)).await?;
     cx.set_broadcast(true)?;
-    let (mut udp_rx, udp_tx) = cx.split();
-    let pings = send_pings(udp_tx);
+    let udp_rx = Arc::new(cx);
+    let pings = send_pings(udp_rx.clone());
 
     let mut server_addr = None;
     let mut server_tlv = HashMap::new();
     let mut buf = [0u8; UDPMAXSIZE];
     tokio::select! {
-        _ = time::delay_for(timeout.unwrap_or(Duration::from_secs(1))), if timeout.is_some() => {},
         res = pings => {
             if let Err(err) = res {
                 return Err(err);
             }
         },
-        res = udp_rx.recv_from(&mut buf) => {
+        res = time::timeout(timeout.unwrap_or(Duration::from_secs(1)), udp_rx.recv_from(&mut buf)) => {
             match res {
-                Ok((len, socket_addr)) => {
+                Ok(Ok((len, socket_addr))) => {
                     server_addr = if let IpAddr::V4(addr) = socket_addr.ip() {
                         Some(addr)
                     } else {
@@ -50,7 +47,8 @@ pub async fn discover(timeout: Option<Duration>) -> io::Result<Option<(Ipv4Addr,
                         server_tlv = decode_tlv(&buf[1..]);
                     }
                 },
-                Err(e) => return Err(e),
+                Ok(Err(e)) => return Err(e),
+                Err(_) => {},
             }
         },
     }
@@ -62,7 +60,7 @@ pub async fn discover(timeout: Option<Duration>) -> io::Result<Option<(Ipv4Addr,
     }
 }
 
-async fn send_pings(mut udp_tx: SendHalf) -> tokio::io::Result<()> {
+async fn send_pings(udp_tx: Arc<UdpSocket>) -> tokio::io::Result<()> {
     const PING_INTERVAL: u64 = 5;
     const SLIM_PORT: u16 = 3483;
 
@@ -71,7 +69,7 @@ async fn send_pings(mut udp_tx: SendHalf) -> tokio::io::Result<()> {
     let mut interval = time::interval(Duration::from_secs(PING_INTERVAL));
     loop {
         interval.tick().await;
-        udp_tx.send_to(&buf, &(bcaddr, SLIM_PORT).into()).await?;
+        udp_tx.send_to(&buf, &(bcaddr, SLIM_PORT)).await?;
     }
 }
 

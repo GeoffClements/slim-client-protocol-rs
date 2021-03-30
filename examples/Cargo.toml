@@ -2,29 +2,16 @@
 name = 'discover'
 path = 'discover.rs'
 
-[[example]]
-name = 'monitor'
-path = 'monitor.rs'
+# [[example]]
+# name = 'monitor'
+# path = 'monitor.rs'
 
 [package]
-name = 'examples'
-version = '0.0.0'
-publish = false
 edition = '2018'
+name = 'examples'
+publish = false
+version = '0.0.0'
 
 [dependencies]
-futures = '0.3'
-
-[dependencies.slimproto]
-path = '../slimproto'
-version = '*'
-
-[dependencies.tokio]
-version = '0.2'
-features = [
-    'io-util',
-    'macros',
-    'tcp',
-    'time',
-    'udp',
-]
+slimproto = {path = '../slimproto', version = '*'}
+tokio = {version = '1.4', features = ['full']}

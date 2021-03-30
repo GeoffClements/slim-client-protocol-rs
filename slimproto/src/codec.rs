@@ -13,11 +13,10 @@ use std::{convert::TryInto, io, net::Ipv4Addr, time::Duration};
 
 pub struct SlimCodec;
 
-impl Encoder for SlimCodec {
-    type Item = ClientMessage;
+impl Encoder<ClientMessage> for SlimCodec {
     type Error = io::Error;
 
-    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: ClientMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
         dst.extend(BytesMut::from(item));
         Ok(())
     }

@@ -1,41 +1,16 @@
 [package]
-name = 'slimproto'
-version = '0.1.0'
 authors = ['Geoff Clements <ro2kz0@gmail.com>']
 edition = '2018'
+name = 'slimproto'
+version = '0.1.0'
 
 [dependencies]
-futures = '0.3'
-futures-core = '0.3'
-bytes = '0.5'
-mac_address = '1.0'
 bitflags = '1.2'
-itertools = '0.8'
-pin-project-lite = '0.1'
+bytes = '1.0'
+mac_address = '1.1'
+tokio = {version = '1.4', features = ['time', 'net']}
+tokio-util = {version = '0.6', features = ['codec']}
 
-[dependencies.tokio]
-version = '0.2'
-features = [
-    'io-util',
-    'macros',
-    'tcp',
-    'time',
-    'stream',
-    'udp',
-]
-
-[dependencies.tokio-util]
-version = '0.2'
-features = ['codec']
-[dev-dependencies.tokio]
-version = '0.2'
-features = [
-    'io-util',
-    'macros',
-    'rt-core',
-    'tcp',
-    'test-util',
-    'time',
-    'stream',
-    'udp',
-]
+[dev-dependencies]
+futures = "0.3"
+tokio = {version = '1.4', features = ['macros', 'net', 'rt', 'test-util']}
