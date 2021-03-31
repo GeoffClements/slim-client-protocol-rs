@@ -1,10 +1,17 @@
+// use async_stream::try_stream;
 use bitflags::bitflags;
 use mac_address::MacAddress;
+use tokio::net::TcpStream;
+use tokio_stream::Stream;
+use tokio_util::codec::FramedRead;
 
 // use crate::codec::SlimCodec;
-// use crate::discovery;
+use crate::{
+    codec::SlimCodec,
+    discovery::{discover, ServerTlv},
+};
 
-use std::{net::Ipv4Addr, time::Duration};
+use std::{io, net::Ipv4Addr, time::Duration};
 
 #[derive(Default)]
 pub struct StatData {
@@ -150,6 +157,27 @@ pub enum ServerMessage {
     Skip(u32),
     Unrecognised(String),
     Error,
+}
+
+pub struct SlimProto;
+
+impl SlimProto {
+    pub async fn connect(&self) -> io::Result<Box<dyn Stream<Item = io::Result<ServerMessage>>>> {
+        const SLIM_PORT: u16 = 3483;
+        const READBUFSIZE: usize = 1024;
+        // const WRITEBUFSIZE: usize = 1024;
+
+        let (server_addr, server_tlvs) = discover(None).await?.unwrap(); //safe unwrap with no timeout
+        let port = match server_tlvs.get("JSON") {
+            Some(ServerTlv::Port(port)) => Some(*port),
+            _ => None,
+        }
+        .unwrap_or(SLIM_PORT);
+
+        let (server_rx, _server_tx) = TcpStream::connect((server_addr, port)).await?.into_split();
+        let frames = FramedRead::with_capacity(server_rx, SlimCodec, READBUFSIZE);
+        Ok(Box::new(frames))
+    }
 }
 
 // impl SlimProto {
