@@ -152,46 +152,6 @@ pub enum ServerMessage {
     Error,
 }
 
-// #[derive(Clone)]
-// enum CapValue {
-//     Bool(bool),
-//     Number(u32),
-//     String(String),
-// }
-
-// #[derive(Clone)]
-// pub struct Capability {
-//     name: String,
-//     value: CapValue,
-// }
-
-// impl Capability {
-//     fn new<T: fmt::Display>(name: T, value: CapValue) -> Self {
-//         Capability {
-//             name: name.to_string(),
-//             value: value,
-//         }
-//     }
-// }
-
-// impl fmt::Display for Capability {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         let value = match &self.value {
-//             CapValue::Bool(ref val) => {
-//                 if *val {
-//                     "1"
-//                 } else {
-//                     "0"
-//                 }
-//             }
-//             .to_string(),
-//             CapValue::Number(ref val) => val.to_string(),
-//             CapValue::String(ref val) => val.to_string(),
-//         };
-//         write!(f, "{}={}", self.name, value)
-//     }
-// }
-
 // impl SlimProto {
 //     async fn send_helo(&mut self, bytes_rx: u64, reconnect: bool) {
 //         let helo = ClientMessage::Helo {

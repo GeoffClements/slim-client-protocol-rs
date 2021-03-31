@@ -14,4 +14,4 @@ version = '0.0.0'
 
 [dependencies]
 slimproto = {path = '../slimproto', version = '*'}
-tokio = {version = '1.4', features = ['full']}
+tokio = {version = '1.4', features = ['rt-multi-thread']}

@@ -1,10 +1,10 @@
-use slimproto::discovery;
+use slimproto::discovery::discover;
 use std::time::Duration;
 use tokio;
 
 #[tokio::main]
 async fn main() {
-    let slim_discover = match discovery::discover(Some(Duration::from_secs(3))).await {
+    let slim_discover = match discover(Some(Duration::from_secs(3))).await {
         Ok(response) => response,
         Err(e) => {
             println!("{:?}", e);
