@@ -1,4 +1,4 @@
-use tokio::{net::UdpSocket, time};
+use tokio::{net::UdpSocket, select, time::{interval, sleep}};
 
 use std::{
     collections::HashMap,
@@ -29,15 +29,15 @@ pub async fn discover(timeout: Option<Duration>) -> io::Result<Option<(Ipv4Addr,
     let mut server_addr = None;
     let mut server_tlv = HashMap::new();
     let mut buf = [0u8; UDPMAXSIZE];
-    tokio::select! {
+    select! {
         res = pings => {
             if let Err(err) = res {
                 return Err(err);
             }
         },
-        res = time::timeout(timeout.unwrap_or(Duration::from_secs(1)), udp_rx.recv_from(&mut buf)) => {
+        res = udp_rx.recv_from(&mut buf) => {
             match res {
-                Ok(Ok((len, socket_addr))) => {
+                Ok((len, socket_addr)) => {
                     server_addr = if let IpAddr::V4(addr) = socket_addr.ip() {
                         Some(addr)
                     } else {
@@ -47,10 +47,10 @@ pub async fn discover(timeout: Option<Duration>) -> io::Result<Option<(Ipv4Addr,
                         server_tlv = decode_tlv(&buf[1..]);
                     }
                 },
-                Ok(Err(e)) => return Err(e),
-                Err(_) => {},
+                Err(e) => return Err(e),
             }
         },
+        _ = sleep(timeout.unwrap_or_default()), if timeout.is_some() => {}
     }
 
     if let Some(server_addr) = server_addr {
@@ -66,9 +66,9 @@ async fn send_pings(udp_tx: Arc<UdpSocket>) -> tokio::io::Result<()> {
 
     let buf = "eNAME\0IPAD\0JSON\0VERS\0".as_bytes();
     let bcaddr = Ipv4Addr::new(255, 255, 255, 255);
-    let mut interval = time::interval(Duration::from_secs(PING_INTERVAL));
+    let mut ping_interval = interval(Duration::from_secs(PING_INTERVAL));
     loop {
-        interval.tick().await;
+        ping_interval.tick().await;
         udp_tx.send_to(&buf, &(bcaddr, SLIM_PORT)).await?;
     }
 }
