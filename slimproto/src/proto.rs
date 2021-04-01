@@ -1,12 +1,13 @@
 // use async_stream::try_stream;
 use bitflags::bitflags;
+use futures_sink::Sink;
 use mac_address::MacAddress;
 use tokio::net::TcpStream;
 use tokio_stream::Stream;
-use tokio_util::codec::FramedRead;
+use tokio_util::codec::{FramedRead, FramedWrite};
 
-// use crate::codec::SlimCodec;
 use crate::{
+    capability::{Capabilities, Capability},
     codec::SlimCodec,
     discovery::{discover, ServerTlv},
 };
@@ -159,13 +160,29 @@ pub enum ServerMessage {
     Error,
 }
 
-pub struct SlimProto;
+#[derive(Default)]
+pub struct SlimProto {
+    pub(crate) capabilities: Capabilities,
+}
 
 impl SlimProto {
-    pub async fn connect(&self) -> io::Result<Box<dyn Stream<Item = io::Result<ServerMessage>>>> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add_capability<'a>(&'a mut self, newcap: Capability) -> &'a mut Self {
+        self.capabilities.add(newcap);
+        self
+    }
+
+    pub async fn connect(
+        self,
+    ) -> io::Result<(
+        Box<dyn Stream<Item = io::Result<ServerMessage>>>,
+        Box<dyn Sink<ClientMessage, Error = io::Error>>,
+    )> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
-        // const WRITEBUFSIZE: usize = 1024;
 
         let (server_addr, server_tlvs) = discover(None).await?.unwrap(); //safe unwrap with no timeout
         let port = match server_tlvs.get("JSON") {
@@ -174,9 +191,10 @@ impl SlimProto {
         }
         .unwrap_or(SLIM_PORT);
 
-        let (server_rx, _server_tx) = TcpStream::connect((server_addr, port)).await?.into_split();
-        let frames = FramedRead::with_capacity(server_rx, SlimCodec, READBUFSIZE);
-        Ok(Box::new(frames))
+        let (server_rx, server_tx) = TcpStream::connect((server_addr, port)).await?.into_split();
+        let read_frames = FramedRead::with_capacity(server_rx, SlimCodec, READBUFSIZE);
+        let write_frames = FramedWrite::new(server_tx, SlimCodec);
+        Ok((Box::new(read_frames), Box::new(write_frames)))
     }
 }
 
@@ -387,3 +405,16 @@ impl SlimProto {
 //         Ok(slimproto)
 //     }
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buildproto() {
+        let mut p = SlimProto::new();
+        p.add_capability(Capability::Mp3);
+        p.add_capability(Capability::Model("test".to_owned()));
+        assert_eq!(p.capabilities.to_string(), "mp3,Model=test");
+    }
+}
