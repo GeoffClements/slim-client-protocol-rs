@@ -365,7 +365,7 @@ impl From<BytesMut> for ServerMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::StatData;
+    use crate::status::StatusData;
     use futures::{SinkExt, StreamExt};
     use mac_address::MacAddress;
     use std::io::Cursor;
@@ -411,7 +411,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_stat() {
-        let stat_data = StatData {
+        let stat_data = StatusData {
             crlf: 0,
             buffer_size: 1234,
             fullness: 5678,

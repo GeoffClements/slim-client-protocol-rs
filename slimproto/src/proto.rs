@@ -10,26 +10,10 @@ use crate::{
     capability::{Capabilities, Capability},
     codec::SlimCodec,
     discovery::discover,
+    status::StatusData,
 };
 
 use std::{io, net::Ipv4Addr, time::Duration};
-
-#[derive(Debug, Default)]
-pub struct StatData {
-    pub crlf: u8,
-    pub buffer_size: u32,
-    pub fullness: u32,
-    pub bytes_received: u64,
-    pub sig_strength: u16,
-    pub jiffies: Duration,
-    pub output_buffer_size: u32,
-    pub output_buffer_fullness: u32,
-    pub elapsed_seconds: u32,
-    pub voltage: u16,
-    pub elapsed_milliseconds: u32,
-    pub timestamp: Duration,
-    pub error_code: u16,
-}
 
 #[derive(Debug)]
 pub enum ClientMessage {
@@ -45,7 +29,7 @@ pub enum ClientMessage {
     },
     Stat {
         event_code: String,
-        stat_data: StatData,
+        stat_data: StatusData,
     },
     Bye(u8),
     Name(String),
@@ -187,7 +171,9 @@ impl SlimProto {
 
         let (server_addr, _server_tlvs) = discover(None).await?.unwrap(); //safe unwrap with no timeout
 
-        let (server_rx, server_tx) = TcpStream::connect((server_addr, SLIM_PORT)).await?.into_split();
+        let (server_rx, server_tx) = TcpStream::connect((server_addr, SLIM_PORT))
+            .await?
+            .into_split();
         let read_frames = FramedRead::with_capacity(server_rx, SlimCodec, READBUFSIZE);
         let mut write_frames = FramedWrite::new(server_tx, SlimCodec);
 
@@ -207,6 +193,14 @@ impl SlimProto {
         write_frames.send(helo).await?;
 
         Ok((Box::pin(read_frames), Box::pin(write_frames)))
+    }
+}
+
+pub fn make_heartbeat(timestamp: Duration) -> ClientMessage {
+    let statdata = StatusData::new(timestamp);
+    ClientMessage::Stat {
+        event_code: "STMt".to_owned(),
+        stat_data: statdata,
     }
 }
 

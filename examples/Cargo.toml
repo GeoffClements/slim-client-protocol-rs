@@ -6,6 +6,10 @@ path = 'discover.rs'
 name = 'hello'
 path = 'hello.rs'
 
+[[example]]
+name = 'boring'
+path = 'boring.rs'
+
 [package]
 edition = '2018'
 name = 'examples'
