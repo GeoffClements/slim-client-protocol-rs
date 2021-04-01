@@ -3,4 +3,5 @@ pub(crate) mod codec;
 pub mod discovery;
 pub mod proto;
 
-pub use proto::{ClientMessage, ServerMessage, StatData};
+pub use capability::{Capabilities, Capability};
+pub use proto::{ClientMessage, ServerMessage, SlimProto};

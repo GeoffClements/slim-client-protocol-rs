@@ -2,9 +2,9 @@
 name = 'discover'
 path = 'discover.rs'
 
-# [[example]]
-# name = 'monitor'
-# path = 'monitor.rs'
+[[example]]
+name = 'hello'
+path = 'hello.rs'
 
 [package]
 edition = '2018'
@@ -13,5 +13,6 @@ publish = false
 version = '0.0.0'
 
 [dependencies]
+futures = "0.3"
 slimproto = {path = '../slimproto', version = '*'}
 tokio = {version = '1.4', features = ['rt-multi-thread']}

@@ -1,7 +1,7 @@
-// use async_stream::try_stream;
 use bitflags::bitflags;
-use futures_sink::Sink;
-use mac_address::MacAddress;
+use futures::{Sink, SinkExt};
+use mac_address::{get_mac_address, MacAddress};
+use std::pin::Pin;
 use tokio::net::TcpStream;
 use tokio_stream::Stream;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -9,12 +9,12 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use crate::{
     capability::{Capabilities, Capability},
     codec::SlimCodec,
-    discovery::{discover, ServerTlv},
+    discovery::discover,
 };
 
 use std::{io, net::Ipv4Addr, time::Duration};
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct StatData {
     pub crlf: u8,
     pub buffer_size: u32,
@@ -31,6 +31,7 @@ pub struct StatData {
     pub error_code: u16,
 }
 
+#[derive(Debug)]
 pub enum ClientMessage {
     Helo {
         device_id: u8,
@@ -178,233 +179,36 @@ impl SlimProto {
     pub async fn connect(
         self,
     ) -> io::Result<(
-        Box<dyn Stream<Item = io::Result<ServerMessage>>>,
-        Box<dyn Sink<ClientMessage, Error = io::Error>>,
+        Pin<Box<dyn Stream<Item = io::Result<ServerMessage>>>>,
+        Pin<Box<dyn Sink<ClientMessage, Error = io::Error>>>,
     )> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
 
-        let (server_addr, server_tlvs) = discover(None).await?.unwrap(); //safe unwrap with no timeout
-        let port = match server_tlvs.get("JSON") {
-            Some(ServerTlv::Port(port)) => Some(*port),
-            _ => None,
-        }
-        .unwrap_or(SLIM_PORT);
+        let (server_addr, _server_tlvs) = discover(None).await?.unwrap(); //safe unwrap with no timeout
 
-        let (server_rx, server_tx) = TcpStream::connect((server_addr, port)).await?.into_split();
+        let (server_rx, server_tx) = TcpStream::connect((server_addr, SLIM_PORT)).await?.into_split();
         let read_frames = FramedRead::with_capacity(server_rx, SlimCodec, READBUFSIZE);
-        let write_frames = FramedWrite::new(server_tx, SlimCodec);
-        Ok((Box::new(read_frames), Box::new(write_frames)))
+        let mut write_frames = FramedWrite::new(server_tx, SlimCodec);
+
+        let helo = ClientMessage::Helo {
+            device_id: 12,
+            revision: 0,
+            mac: match get_mac_address() {
+                Ok(Some(mac)) => mac,
+                _ => MacAddress::new([1, 2, 3, 4, 5, 6]),
+            },
+            uuid: [0u8; 16],
+            wlan_channel_list: 0,
+            bytes_received: 0,
+            language: ['e', 'n'],
+            capabilities: self.capabilities.to_string(),
+        };
+        write_frames.send(helo).await?;
+
+        Ok((Box::pin(read_frames), Box::pin(write_frames)))
     }
 }
-
-// impl SlimProto {
-//     async fn send_helo(&mut self, bytes_rx: u64, reconnect: bool) {
-//         let helo = ClientMessage::Helo {
-//             device_id: 12,
-//             revision: 0,
-//             mac: match get_mac_address() {
-//                 Ok(Some(mac)) => mac,
-//                 _ => MacAddress::new([1, 2, 3, 4, 5, 6]),
-//             },
-//             uuid: [0u8; 16],
-//             wlan_channel_list: if reconnect {0x4000} else {0},
-//             bytes_received: bytes_rx,
-//             language: ['e', 'n'],
-//             capabilities: self.make_cap_string(),
-//         };
-
-//         let _ = self.framed.send(helo).await;
-//     }
-
-//     fn make_cap_string(&self) -> String {
-//         let mut caps = self.capabilities.iter().join(",");
-//         if let Some(modelname) = &self.modelname {
-//             caps.push_str(format!(",ModelName={}", modelname).as_str());
-//         }
-//         caps
-//     }
-// }
-
-// #[derive(Default)]
-// pub struct SlimProtoBuilder {
-//     server: Option<Ipv4Addr>,
-//     reconnect: bool,
-//     bytes_rx: u64,
-//     model_name: Option<String>,
-//     capabilities: Vec<Capability>,
-// }
-
-// impl SlimProtoBuilder {
-//     pub fn new() -> Self {
-//         SlimProtoBuilder::default()
-//     }
-
-//     pub fn server<'a>(&'a mut self, ip: Ipv4Addr) -> &'a mut Self {
-//         self.server = Some(ip);
-//         self
-//     }
-
-//     pub fn wma<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("wma", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn wmap<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("wmap", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn wmal<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("wmal", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn ogg<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("ogg", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn flc<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("flc", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn pcm<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("pcm", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn aif<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("aif", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn mp3<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("mp3", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn alc<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("alc", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn aac<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("aac", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn rhap<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("rhap", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn accurateplaypoints<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("accurateplaypoints", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn hasdigitalout<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("hasdigitalout", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn haspreamp<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("haspreamp", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn hasdisabledac<'a>(&'a mut self, en: bool) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("hasdisabledac", CapValue::Bool(en)));
-//         self
-//     }
-
-//     pub fn model<'a, D: fmt::Display>(&'a mut self, model: D) -> &'a mut Self {
-//         self.capabilities.push(Capability::new(
-//             "model",
-//             CapValue::String(model.to_string()),
-//         ));
-//         self
-//     }
-
-//     pub fn modelname<'a, D: fmt::Display>(&'a mut self, model: D) -> &'a mut Self {
-//         self.model_name = Some(model.to_string());
-//         self
-//     }
-
-//     pub fn syncgroupid<'a, D: fmt::Display>(&'a mut self, model: D) -> &'a mut Self {
-//         self.capabilities.push(Capability::new(
-//             "syncgroupid",
-//             CapValue::String(model.to_string()),
-//         ));
-//         self
-//     }
-
-//     pub fn maxsamplerate<'a>(&'a mut self, val: u32) -> &'a mut Self {
-//         self.capabilities
-//             .push(Capability::new("maxsamplerate", CapValue::Number(val)));
-//         self
-//     }
-
-//     pub fn reconnect<'a>(&'a mut self, reconnect: bool) -> &'a mut Self {
-//         self.reconnect = reconnect;
-//         self
-//     }
-
-//     pub fn bytes_received<'a>(&'a mut self, bytes_rx: u64) -> &'a mut Self {
-//         self.bytes_rx= bytes_rx;
-//         self
-//     }
-
-//     pub async fn build(&self, helo: bool) -> io::Result<SlimProto> {
-//         const SLIM_PORT: u16 = 3483;
-//         const READBUFSIZE: usize = 1024;
-//         const WRITEBUFSIZE: usize = 1024;
-
-//         let server_addr = if let Some(addr) = self
-//             .server
-//             .or(discovery::discover(None).await?.map(|(a, _)| a))
-//         {
-//             addr
-//         } else {
-//             unreachable!() // because discover has no timeout
-//         };
-
-//         let server_tcp = TcpStream::connect((server_addr, SLIM_PORT)).await?;
-//         let framed = Framed::new(
-//             BufStream::with_capacity(READBUFSIZE, WRITEBUFSIZE, server_tcp),
-//             SlimCodec,
-//         );
-
-//         let mut slimproto = SlimProto {
-//             framed: framed,
-//             modelname: self.model_name.clone(),
-//             capabilities: self.capabilities.clone(),
-//         };
-
-//         if helo {
-//             slimproto.send_helo(self.bytes_rx, self.reconnect).await;
-//         }
-
-//         Ok(slimproto)
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
@@ -414,7 +218,8 @@ mod tests {
     fn buildproto() {
         let mut p = SlimProto::new();
         p.add_capability(Capability::Mp3);
-        p.add_capability(Capability::Model("test".to_owned()));
-        assert_eq!(p.capabilities.to_string(), "mp3,Model=test");
+        p.add_capability(Capability::Model("test".to_owned()))
+            .add_capability(Capability::Ogg);
+        assert_eq!(p.capabilities.to_string(), "mp3,Model=test,ogg");
     }
 }
