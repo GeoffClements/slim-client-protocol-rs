@@ -8,7 +8,7 @@
 /// with a status message and this will go on forever, doing
 /// nothing, hence boring.
 use futures::{SinkExt, StreamExt};
-use slimproto::{Capability, ServerMessage, SlimProto, StatusData};
+use slimproto::{Capability, ServerMessage, SlimProto, StatusCode, StatusData};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -24,7 +24,8 @@ async fn main() {
             println!("{:?}", msg);
             match msg {
                 ServerMessage::Status(timestamp) => {
-                    let msg = status.make_status_message(timestamp);
+                    status.set_timestamp(timestamp);
+                    let msg = status.make_status_message(StatusCode::Timer);
                     if let Err(_) = proto_sink.send(msg).await {
                         break;
                     }

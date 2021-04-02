@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fmt, time::Duration};
 
 use crate::ClientMessage;
 
@@ -75,11 +75,44 @@ impl StatusData {
         self
     }
 
-    pub fn make_status_message(&mut self, timestamp: Duration) -> ClientMessage {
-        let statdata = self.set_timestamp(timestamp).clone();
+    pub fn make_status_message(&self, msgtype: StatusCode) -> ClientMessage {
         ClientMessage::Stat {
-            event_code: "STMt".to_owned(),
-            stat_data: statdata,
+            event_code: msgtype.to_string(),
+            stat_data: self.clone(),
+        }
+    }
+}
+
+pub enum StatusCode {
+    Connect,
+    DecoderReasdy,
+    StreamEstablished,
+    Flushed,
+    HeadersReceived,
+    BufferThreshold,
+    OutputUnderrun,
+    Pause,
+    Resume,
+    TrackStarted,
+    Timer,
+    Underrun,
+}
+
+impl fmt::Display for StatusCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            StatusCode::Connect => write!(f, "STMc"),
+            StatusCode::DecoderReasdy => write!(f, "STMd"),
+            StatusCode::StreamEstablished => write!(f, "STMe"),
+            StatusCode::Flushed => write!(f, "STMf"),
+            StatusCode::HeadersReceived => write!(f, "STMh"),
+            StatusCode::BufferThreshold => write!(f, "STMl"),
+            StatusCode::OutputUnderrun => write!(f, "STMo"),
+            StatusCode::Pause => write!(f, "STMp"),
+            StatusCode::Resume => write!(f, "STMr"),
+            StatusCode::TrackStarted => write!(f, "STMs"),
+            StatusCode::Timer => write!(f, "STMt"),
+            StatusCode::Underrun => write!(f, "STMu"),
         }
     }
 }

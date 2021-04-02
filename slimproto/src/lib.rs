@@ -6,4 +6,4 @@ pub mod status;
 
 pub use capability::{Capabilities, Capability};
 pub use proto::{ClientMessage, ServerMessage, SlimProto};
-pub use status::StatusData;
+pub use status::{StatusCode, StatusData};
