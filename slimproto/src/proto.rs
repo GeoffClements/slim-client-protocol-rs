@@ -197,14 +197,6 @@ impl SlimProto {
     }
 }
 
-pub fn make_heartbeat(timestamp: Duration) -> ClientMessage {
-    let statdata = StatusData::new(timestamp);
-    ClientMessage::Stat {
-        event_code: "STMt".to_owned(),
-        stat_data: statdata,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

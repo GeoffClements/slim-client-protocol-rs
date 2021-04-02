@@ -5,12 +5,15 @@
 /// from the server.
 ///
 /// Unlike the hello example this will respond to status requests
-/// with a status message and this will go on forever.
+/// with a status message and this will go on forever, doing
+/// nothing, hence boring.
 use futures::{SinkExt, StreamExt};
-use slimproto::{proto::make_heartbeat, Capability, ServerMessage, SlimProto};
+use slimproto::{Capability, ServerMessage, SlimProto, StatusData};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    let mut status = StatusData::new(0, 0);
+
     let mut proto = SlimProto::new();
     proto
         .add_capability(Capability::Modelname("Example".to_owned()))
@@ -21,8 +24,8 @@ async fn main() {
             println!("{:?}", msg);
             match msg {
                 ServerMessage::Status(timestamp) => {
-                    let statmsg = make_heartbeat(timestamp);
-                    if let Err(_) = proto_sink.send(statmsg).await {
+                    let msg = status.make_status_message(timestamp);
+                    if let Err(_) = proto_sink.send(msg).await {
                         break;
                     }
                 }
