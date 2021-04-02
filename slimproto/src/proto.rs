@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 use futures::{Sink, SinkExt};
+use http_header::RequestHeader;
 use mac_address::{get_mac_address, MacAddress};
 use std::pin::Pin;
 use tokio::net::TcpStream;
@@ -107,7 +108,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum ServerMessage {
     Serv {
         ip_address: Ipv4Addr,
@@ -130,7 +131,7 @@ pub enum ServerMessage {
         replay_gain: f64,
         server_port: u16,
         server_ip: Ipv4Addr,
-        http_headers: String,
+        http_headers: Option<RequestHeader>,
     },
     Gain(f64, f64),
     Enable(bool, bool),

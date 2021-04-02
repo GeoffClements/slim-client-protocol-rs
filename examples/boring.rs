@@ -9,7 +9,7 @@
 use futures::{SinkExt, StreamExt};
 use slimproto::{proto::make_heartbeat, Capability, ServerMessage, SlimProto};
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let mut proto = SlimProto::new();
     proto

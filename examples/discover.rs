@@ -2,7 +2,7 @@ use slimproto::discovery::discover;
 use std::time::Duration;
 use tokio;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let slim_discover = match discover(Some(Duration::from_secs(3))).await {
         Ok(response) => response,

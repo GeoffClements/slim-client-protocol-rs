@@ -1,4 +1,5 @@
 use bytes::{buf::BufMut, Buf, BytesMut};
+use http_header::{Header, RequestHeader};
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
@@ -9,7 +10,12 @@ use crate::{
     ClientMessage, ServerMessage,
 };
 
-use std::{convert::TryInto, io, net::Ipv4Addr, time::Duration};
+use std::{
+    convert::{TryFrom, TryInto},
+    io,
+    net::Ipv4Addr,
+    time::Duration,
+};
 
 pub struct SlimCodec;
 
@@ -259,9 +265,17 @@ impl From<BytesMut> for ServerMessage {
                         let server_ip = Ipv4Addr::from(buf.split_to(4).get_u32());
 
                         let http_headers = if buf.len() > 0 {
-                            buf[..].into_iter().map(|c| *c as char).collect()
+                            if let Ok(header) = Header::parse(&buf[..]) {
+                                if let Ok(req) = RequestHeader::try_from(header) {
+                                    Some(req)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
                         } else {
-                            String::new()
+                            None
                         };
 
                         ServerMessage::Stream {
@@ -469,14 +483,13 @@ mod tests {
             0u8, 12, b's', b'e', b'r', b'v', 172, 16, 1, 2, b's', b'y', b'n', b'c',
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(
-                msg,
-                ServerMessage::Serv {
-                    ip_address: Ipv4Addr::new(172, 16, 1, 2),
-                    sync_group_id: Some("sync".to_owned())
-                }
-            );
+        if let Some(Ok(ServerMessage::Serv {
+            ip_address,
+            sync_group_id,
+        })) = framed.next().await
+        {
+            assert_eq!(ip_address, Ipv4Addr::new(172, 16, 1, 2));
+            assert_eq!(sync_group_id, Some("sync".to_owned()));
         } else {
             panic!("SERV message not received");
         }
@@ -489,8 +502,8 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::Status(Duration::from_millis(252711186)));
+        if let Some(Ok(ServerMessage::Status(d))) = framed.next().await {
+            assert_eq!(d, Duration::from_millis(252711186));
         } else {
             panic!("STRMt message not received");
         }
@@ -503,8 +516,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::Stop);
+        if let Some(Ok(ServerMessage::Stop)) = framed.next().await {
         } else {
             panic!("STRMq message not received");
         }
@@ -517,8 +529,8 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::Pause(252711186));
+        if let Some(Ok(ServerMessage::Pause(p))) = framed.next().await {
+            assert_eq!(p, 252711186);
         } else {
             panic!("STRMp message not received");
         }
@@ -531,8 +543,8 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::Unpause(252711186));
+        if let Some(Ok(ServerMessage::Unpause(p))) = framed.next().await {
+            assert_eq!(p, 252711186);
         } else {
             panic!("STRMu message not received");
         }
@@ -545,8 +557,8 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::Skip(252711186));
+        if let Some(Ok(ServerMessage::Skip(p))) = framed.next().await {
+            assert_eq!(p, 252711186);
         } else {
             panic!("STRMa message not received");
         }
@@ -559,8 +571,8 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::Unrecognised("strm_x".to_owned()));
+        if let Some(Ok(ServerMessage::Unrecognised(s))) = framed.next().await {
+            assert_eq!(s, "strm_x".to_owned());
         } else {
             panic!("STRMx message not received");
         }
@@ -570,8 +582,8 @@ mod tests {
     async fn test_recv_enable() {
         let buf = [0u8, 6, b'a', b'u', b'd', b'e', 0, 1];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::Enable(false, true));
+        if let Some(Ok(ServerMessage::Enable(a, b))) = framed.next().await {
+            assert_eq!((a, b), (false, true));
         } else {
             panic!("AUDE message not received");
         }
@@ -618,8 +630,7 @@ mod tests {
     async fn test_recv_queryname() {
         let buf = [0u8, 5, b's', b'e', b't', b'd', 0];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::Queryname);
+        if let Some(Ok(ServerMessage::Queryname)) = framed.next().await {
         } else {
             panic!("SETD message not received");
         }
@@ -629,8 +640,7 @@ mod tests {
     async fn test_recv_disabledac() {
         let buf = [0u8, 5, b's', b'e', b't', b'd', 4];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(msg, ServerMessage::DisableDac);
+        if let Some(Ok(ServerMessage::DisableDac)) = framed.next().await {
         } else {
             panic!("SETD message not received");
         }
@@ -638,35 +648,74 @@ mod tests {
 
     #[tokio::test]
     async fn test_recv_strm() {
+        fn do_panic() {
+            panic!("STRMs message not received");
+        }
         let buf = [
-            0u8, 31, b's', b't', b'r', b'm', b's', b'1', b'm', b'2', b'3', b'?', b'0', 1, b'2', 3,
-            b'4', 1, 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2, b'a', b'b', b'c',
+            0u8, 28, b's', b't', b'r', b'm', b's', b'1', b'm', b'2', b'3', b'?', b'0', 1, b'2', 3,
+            b'4', 1, 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
-            assert_eq!(
-                msg,
-                ServerMessage::Stream {
-                    autostart: AutoStart::Auto,
-                    format: Format::Mp3,
-                    pcmsamplesize: PcmSampleSize::Twenty,
-                    pcmsamplerate: PcmSampleRate::Rate(44100),
-                    pcmchannels: PcmChannels::SelfDescribing,
-                    pcmendian: PcmEndian::Big,
-                    threshold: 1024,
-                    spdif_enable: SpdifEnable::Off,
-                    trans_period: Duration::from_secs(3),
-                    trans_type: TransType::FadeInOut,
-                    flags: StreamFlags::INVERT_POLARITY_LEFT,
-                    output_threshold: Duration::from_millis(2),
-                    replay_gain: 1.5,
-                    server_port: 9001,
-                    server_ip: Ipv4Addr::new(172, 16, 1, 2),
-                    http_headers: String::from("abc"),
-                }
-            );
-        } else {
-            panic!("STRMs message not received");
+        if let Some(Ok(ServerMessage::Stream {
+            autostart,
+            format,
+            pcmsamplesize,
+            pcmsamplerate,
+            pcmchannels,
+            pcmendian,
+            threshold,
+            spdif_enable,
+            trans_period,
+            trans_type,
+            flags,
+            output_threshold,
+            replay_gain,
+            server_port,
+            server_ip,
+            http_headers,
+        })) = framed.next().await
+        {
+            if let AutoStart::Auto = autostart {
+            } else {
+                do_panic();
+            }
+            if let Format::Mp3 = format {
+            } else {
+                do_panic();
+            }
+            if let PcmSampleSize::Twenty = pcmsamplesize {
+            } else {
+                do_panic();
+            }
+            if let PcmSampleRate::Rate(r) = pcmsamplerate {
+                assert_eq!(r, 44100);
+            } else {
+                do_panic();
+            }
+            if let PcmChannels::SelfDescribing = pcmchannels {
+            } else {
+                do_panic();
+            }
+            if let PcmEndian::Big = pcmendian {
+            } else {
+                do_panic();
+            }
+            assert_eq!(threshold, 1024);
+            if let SpdifEnable::Off = spdif_enable {
+            } else {
+                do_panic();
+            }
+            assert_eq!(trans_period, Duration::from_secs(3));
+            if let TransType::FadeInOut = trans_type {
+            } else {
+                do_panic();
+            }
+            assert_eq!(flags, StreamFlags::INVERT_POLARITY_LEFT);
+            assert_eq!(output_threshold, Duration::from_millis(2));
+            assert_eq!(replay_gain, 1.5);
+            assert_eq!(server_port, 9001);
+            assert_eq!(server_ip, Ipv4Addr::new(172, 16, 1, 2));
+            assert!(http_headers.is_none());
         }
     }
 
