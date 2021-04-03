@@ -16,7 +16,7 @@ async fn main() {
         .add_capability(Capability::Modelname("Example".to_owned()))
         .add_capability(Capability::Model("Example".to_owned()));
 
-    if let Ok((mut proto_stream, _)) = proto.connect().await {
+    if let Ok((mut proto_stream, _, _)) = proto.connect().await {
         while let Some(Ok(msg)) = proto_stream.next().await {
             println!("{:?}", msg);
         }

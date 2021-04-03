@@ -85,7 +85,7 @@ impl StatusData {
 
 pub enum StatusCode {
     Connect,
-    DecoderReasdy,
+    DecoderReady,
     StreamEstablished,
     Flushed,
     HeadersReceived,
@@ -102,7 +102,7 @@ impl fmt::Display for StatusCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             StatusCode::Connect => write!(f, "STMc"),
-            StatusCode::DecoderReasdy => write!(f, "STMd"),
+            StatusCode::DecoderReady => write!(f, "STMd"),
             StatusCode::StreamEstablished => write!(f, "STMe"),
             StatusCode::Flushed => write!(f, "STMf"),
             StatusCode::HeadersReceived => write!(f, "STMh"),

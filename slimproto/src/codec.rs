@@ -233,10 +233,10 @@ impl From<BytesMut> for ServerMessage {
 
                         let threshold = buf.split_to(1)[0] as u32 * 1024u32;
 
-                        let spdif_enable = match buf.split_to(1)[0] as char {
-                            '0' => SpdifEnable::Auto,
-                            '1' => SpdifEnable::On,
-                            '2' => SpdifEnable::Off,
+                        let spdif_enable = match buf.split_to(1)[0] {
+                            0 => SpdifEnable::Auto,
+                            1 => SpdifEnable::On,
+                            2 => SpdifEnable::Off,
                             _ => return ServerMessage::Error,
                         };
 
@@ -652,8 +652,8 @@ mod tests {
             panic!("STRMs message not received");
         }
         let buf = [
-            0u8, 28, b's', b't', b'r', b'm', b's', b'1', b'm', b'2', b'3', b'?', b'0', 1, b'2', 3,
-            b'4', 1, 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2,
+            0u8, 28, b's', b't', b'r', b'm', b's', b'1', b'm', b'2', b'3', b'?', b'0', 1, 2, 3, 4,
+            b'1', 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
         if let Some(Ok(ServerMessage::Stream {

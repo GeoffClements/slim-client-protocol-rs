@@ -2,7 +2,6 @@ use bitflags::bitflags;
 use futures::{Sink, SinkExt};
 use http_header::RequestHeader;
 use mac_address::{get_mac_address, MacAddress};
-use std::pin::Pin;
 use tokio::net::TcpStream;
 use tokio_stream::Stream;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -14,7 +13,7 @@ use crate::{
     status::StatusData,
 };
 
-use std::{io, net::Ipv4Addr, time::Duration};
+use std::{default::Default, io, net::Ipv4Addr, pin::Pin, time::Duration};
 
 #[derive(Debug)]
 pub enum ClientMessage {
@@ -166,6 +165,7 @@ impl SlimProto {
     ) -> io::Result<(
         Pin<Box<dyn Stream<Item = io::Result<ServerMessage>>>>,
         Pin<Box<dyn Sink<ClientMessage, Error = io::Error>>>,
+        Ipv4Addr,
     )> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
@@ -193,7 +193,7 @@ impl SlimProto {
         };
         write_frames.send(helo).await?;
 
-        Ok((Box::pin(read_frames), Box::pin(write_frames)))
+        Ok((Box::pin(read_frames), Box::pin(write_frames), server_addr))
     }
 }
 

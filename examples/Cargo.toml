@@ -10,6 +10,10 @@ path = 'hello.rs'
 name = 'boring'
 path = 'boring.rs'
 
+[[example]]
+name = 'player'
+path = 'player.rs'
+
 [package]
 edition = '2018'
 name = 'examples'
@@ -18,5 +22,6 @@ version = '0.0.0'
 
 [dependencies]
 futures = "0.3"
+rodio = "0.13"
 slimproto = {path = '../slimproto', version = '*'}
 tokio = {version = '1.4', features = ['rt']}
