@@ -1,3 +1,9 @@
+//! Slim Protocol using [Tokio][tokio] and [Futures][futures]
+//! 
+//! 
+//! [tokio]: https://docs.rs/tokio/tokio/
+//! [futures]: https://docs.rs/futures/futures/
+
 pub mod capability;
 pub(crate) mod codec;
 pub mod discovery;
