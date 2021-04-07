@@ -13,7 +13,7 @@ use crate::{
     status::StatusData,
 };
 
-use std::{default::Default, io, net::Ipv4Addr, pin::Pin, time::Duration};
+use std::{io, net::Ipv4Addr, pin::Pin, time::Duration};
 
 #[derive(Debug)]
 pub enum ClientMessage {
