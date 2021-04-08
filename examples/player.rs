@@ -1,14 +1,12 @@
 /// A basic player using Rodio
 use futures::{SinkExt, StreamExt};
 use rodio::{self, Decoder, OutputStream, Sink};
-use slimproto::{Capability, ClientMessage, ServerMessage, SlimProto, StatusCode, StatusData};
-
-use std::{
-    cmp,
-    convert::TryInto,
-    io::{self, BufRead, Read, Seek, SeekFrom, Write},
-    net::TcpStream,
+use slimproto::{
+    util::socketreader::SocketReader, Capability, ClientMessage, ServerMessage, SlimProto,
+    StatusCode, StatusData,
 };
+
+use std::{io::Write, net::TcpStream};
 
 const BUFSIZE: u32 = 8 * 1024;
 
@@ -62,79 +60,11 @@ async fn main() {
                                 request.version()
                             );
                         }
-                        music_out.append(Decoder::new(BufReader::new(cx)).unwrap());
+                        music_out.append(Decoder::new(SocketReader::new(cx)).unwrap());
                     }
                 }
                 _ => {}
             }
         }
-    }
-}
-
-struct BufReader<R> {
-    inner: R,
-    buf: Box<[u8]>,
-    pos: usize,
-    cap: usize,
-    pos_from_start: u64,
-}
-
-impl<R: Read> BufReader<R> {
-    fn new(inner: R) -> BufReader<R> {
-        BufReader::with_capacity(BUFSIZE as usize, inner)
-    }
-
-    fn with_capacity(capacity: usize, inner: R) -> BufReader<R> {
-        let mut buffer = Vec::with_capacity(capacity);
-        buffer.resize(capacity, 0);
-        BufReader {
-            inner,
-            buf: buffer.into_boxed_slice(),
-            pos: 0,
-            cap: 0,
-            pos_from_start: 0,
-        }
-    }
-}
-
-impl<R: Read> Read for BufReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let nread = {
-            let mut rem = self.fill_buf()?;
-            rem.read(buf)?
-        };
-        self.consume(nread);
-        Ok(nread)
-    }
-}
-
-impl<R: Read> BufRead for BufReader<R> {
-    fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        if self.pos >= self.cap {
-            self.cap = self.inner.read(&mut self.buf)?;
-            self.pos = 0;
-        }
-        Ok(&self.buf[self.pos..self.cap])
-    }
-
-    fn consume(&mut self, amt: usize) {
-        self.pos = cmp::min(self.pos + amt, self.cap);
-        self.pos_from_start += self.pos as u64;
-    }
-}
-
-impl<R: Read> Seek for BufReader<R> {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        let mut result = 0u64;
-        if let SeekFrom::Current(n) = pos {
-            let remainder = (self.cap - self.pos) as i64;
-            if n <= remainder {
-                self.consume(n.try_into().unwrap());
-                result = self.pos_from_start;
-            } else {
-                return Err(io::Error::from(io::ErrorKind::NotFound));
-            }
-        }
-        Ok(result)
     }
 }
