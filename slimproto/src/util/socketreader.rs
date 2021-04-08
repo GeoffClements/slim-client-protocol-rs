@@ -1,12 +1,12 @@
 //! SocketReader
 //!
-//! Provides a drop-in replacement for std::io::SocketReader but
+//! Provides a drop-in replacement for std::io::BufReader but
 //! provides limited Seek semantics. Designed to be used with
 //! Rodio in order to play a TcpStream.
 
 use std::{
     cmp,
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     io::{self, BufRead, Read, Seek, SeekFrom},
 };
 
@@ -49,6 +49,7 @@ impl<R: Read> Read for SocketReader<R> {
             let mut rem = self.fill_buf()?;
             rem.read(buf)?
         };
+        println!("READ: {}", nread);
         self.consume(nread);
         Ok(nread)
     }
@@ -76,40 +77,35 @@ impl<R: Read> Seek for SocketReader<R> {
         let relpos: i64 = match pos {
             SeekFrom::Current(n) => n,
             SeekFrom::Start(n) => {
-                let n = self.pos_from_start - n;
                 if n < self.pos_from_start {
-                    match i64::try_from(n) {
-                        Ok(n) => -n,
-                        Err(_) => return Err(err),
-                    }
+                    -((self.pos_from_start - n) as i64)
                 } else {
-                    match n.try_into() {
-                        Ok(n) => n,
-                        Err(_) => return Err(err),
-                    }
+                    (n - self.pos_from_start) as i64
                 }
             }
             SeekFrom::End(_) => return Err(err),
         };
-
+        
         let mut relapos = match usize::try_from(relpos.abs()) {
             Ok(n) => n,
             Err(_) => return Err(err),
         };
 
         if relpos.is_negative() {
-            if relapos < self.pos {
+            if relapos <= self.pos {
                 self.unconsume(relapos);
             } else {
                 return Err(err);
             }
         } else {
-            while relapos > self.cap {
+            while relapos >= self.cap - self.pos {
+                relapos -= self.cap - self.pos;
                 self.consume(self.cap - self.pos);
                 self.fill_buf()?;
-                relapos -= self.cap - self.pos;
+                if self.cap == 0 {
+                    return Err(err);
+                }
             }
-            println!("{}, {}, {}", relapos, self.pos, self.cap);
             self.consume(relapos);
         }
 
@@ -121,16 +117,17 @@ impl<R: Read> Seek for SocketReader<R> {
 mod tests {
     use super::*;
 
+    fn filltestdata(d: &mut Vec<u8>) {
+        for i in 0..64 {
+            d.push(i as u8);
+        }
+    }
     #[test]
     fn test_read() {
         let mut d = Vec::with_capacity(64);
-        let testdata = {
-            for i in 0..64 {
-                d.push(i as u8);
-            };
-            d.as_slice()
-        };
-        
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
         let mut seekbuf = SocketReader::with_capacity(64, testdata);
         let mut buf = [0u8; 8];
         let nread = seekbuf.read(&mut buf).unwrap();
@@ -141,13 +138,9 @@ mod tests {
     #[test]
     fn test_multpile_reads() {
         let mut d = Vec::with_capacity(64);
-        let testdata = {
-            for i in 0..64 {
-                d.push(i as u8);
-            };
-            d.as_slice()
-        };
-        
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
         let mut seekbuf = SocketReader::with_capacity(64, testdata);
         let mut buf = [0u8; 8];
         let _ = seekbuf.read(&mut buf);
@@ -158,13 +151,9 @@ mod tests {
     #[test]
     fn seek_from_end() {
         let mut d = Vec::with_capacity(64);
-        let testdata = {
-            for i in 0..64 {
-                d.push(i as u8);
-            };
-            d.as_slice()
-        };
-        
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
         let mut seekbuf = SocketReader::with_capacity(64, testdata);
         let mut buf = [0u8; 8];
         let _ = seekbuf.read(&mut buf);
@@ -175,18 +164,101 @@ mod tests {
     #[test]
     fn seek_current_in_buf() {
         let mut d = Vec::with_capacity(64);
-        let testdata = {
-            for i in 0..64 {
-                d.push(i as u8);
-            };
-            d.as_slice()
-        };
-        
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
         let mut seekbuf = SocketReader::with_capacity(64, testdata);
         let mut buf = [0u8; 8];
         let _ = seekbuf.read(&mut buf);
         let _ = seekbuf.read(&mut buf);
         let pos = seekbuf.seek(SeekFrom::Current(4)).unwrap();
         assert_eq!(pos, 20u64);
+    }
+
+    #[test]
+    fn seek_current_out_of_buf() {
+        let mut d = Vec::with_capacity(64);
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
+        let mut seekbuf = SocketReader::with_capacity(64, testdata);
+        let mut buf = [0u8; 8];
+        let _ = seekbuf.read(&mut buf);
+        let pos = seekbuf.seek(SeekFrom::Current(30)).unwrap();
+        assert_eq!(pos, 38u64);
+        let _ = seekbuf.read(&mut buf);
+        assert_eq!(buf, testdata[38..46]);
+    }
+
+    #[test]
+    fn seek_backwards_out_of_buf() {
+        let mut d = Vec::with_capacity(64);
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
+        let mut seekbuf = SocketReader::with_capacity(64, testdata);
+        let mut buf = [0u8; 8];
+        let _ = seekbuf.read(&mut buf);
+        let pos = seekbuf.seek(SeekFrom::Current(-9));
+        assert!(pos.is_err());
+    }
+
+    #[test]
+    fn seek_backwards_in_buf() {
+        let mut d = Vec::with_capacity(64);
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
+        let mut seekbuf = SocketReader::with_capacity(64, testdata);
+        let mut buf = [0u8; 8];
+        let _ = seekbuf.read(&mut buf);
+        let _ = seekbuf.read(&mut buf);
+        let pos = seekbuf.seek(SeekFrom::Current(-4)).unwrap();
+        assert_eq!(pos, 12u64);
+        let _ = seekbuf.read(&mut buf);
+        assert_eq!(buf, testdata[12..20]);
+    }
+
+    #[test]
+    fn seek_from_start_ahead() {
+        let mut d = Vec::with_capacity(64);
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
+        let mut seekbuf = SocketReader::with_capacity(64, testdata);
+        let mut buf = [0u8; 8];
+        let _ = seekbuf.read(&mut buf);
+        let _ = seekbuf.read(&mut buf);
+        let pos = seekbuf.seek(SeekFrom::Start(21)).unwrap();
+        assert_eq!(pos, 21u64);
+        let _ = seekbuf.read(&mut buf);
+        assert_eq!(buf, testdata[21..29]);
+    }
+
+    #[test]
+    fn seek_from_start_behind() {
+        let mut d = Vec::with_capacity(64);
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
+        let mut seekbuf = SocketReader::with_capacity(64, testdata);
+        let mut buf = [0u8; 8];
+        let _ = seekbuf.read(&mut buf);
+        let _ = seekbuf.read(&mut buf);
+        let pos = seekbuf.seek(SeekFrom::Start(9)).unwrap();
+        assert_eq!(pos, 9u64);
+        let _ = seekbuf.read(&mut buf);
+        assert_eq!(buf, testdata[9..17]);
+    }
+
+    #[test]
+    fn seek_past_end() {
+        let mut d = Vec::with_capacity(64);
+        filltestdata(&mut d);
+        let testdata = d.as_slice();
+
+        let mut seekbuf = SocketReader::with_capacity(64, testdata);
+        let pos = seekbuf.seek(SeekFrom::Start(65));
+        assert!(pos.is_err());
     }
 }
