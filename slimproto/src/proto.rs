@@ -1,5 +1,5 @@
 //! Contains the protocol object with which we interact with the server.
-//! 
+//!
 //! This module also holds the `ClientMessage` and `ServerMessage` types that
 //! are sent to and received from the server.
 
@@ -156,14 +156,14 @@ pub enum ServerMessage {
 
 /// The Slim Protocol struct is used to provide `Stream` and `Sink` objects
 /// for communicating with the server.
-/// 
+///
 /// Normal procedure is to:
 /// 1. Create the struct
 /// 2. Add capabilities
 /// 3. Connect to the server
-/// 
+///
 /// e.g.
-/// 
+///
 /// ```rust
 /// let mut proto = SlimProto::new();
 /// proto
@@ -171,7 +171,7 @@ pub enum ServerMessage {
 ///    .add_capability(Capability::Model("Example".to_owned()));
 /// (mut proto_stream, mut proto_sink, server_address) = proto.connect().await.unwrap()
 /// ```
-/// 
+///
 #[derive(Default)]
 pub struct SlimProto {
     pub(crate) capabilities: Capabilities,
@@ -199,14 +199,26 @@ impl SlimProto {
         Pin<Box<dyn Sink<ClientMessage, Error = io::Error>>>,
         Ipv4Addr,
     )> {
+        let (server_addr, _server_tlvs) = discover(None).await?.unwrap(); //safe unwrap with no timeout
+        let (proto_stream, proto_sink) = self.connect_to(&server_addr).await?;
+
+        Ok((proto_stream, proto_sink, server_addr))
+    }
+
+    /// Connect to the server at the given address and send the list of capabilities.
+    /// Returns a `Stream` object that streams `ServerMessage` and a `Sink` object that accepts
+    /// `ClientMessage`.
+    pub async fn connect_to(
+        self,
+        addr: &Ipv4Addr,
+    ) -> io::Result<(
+        Pin<Box<dyn Stream<Item = io::Result<ServerMessage>>>>,
+        Pin<Box<dyn Sink<ClientMessage, Error = io::Error>>>,
+    )> {
         const SLIM_PORT: u16 = 3483;
         const READBUFSIZE: usize = 1024;
 
-        let (server_addr, _server_tlvs) = discover(None).await?.unwrap(); //safe unwrap with no timeout
-
-        let (server_rx, server_tx) = TcpStream::connect((server_addr, SLIM_PORT))
-            .await?
-            .into_split();
+        let (server_rx, server_tx) = TcpStream::connect((*addr, SLIM_PORT)).await?.into_split();
         let read_frames = FramedRead::with_capacity(server_rx, SlimCodec, READBUFSIZE);
         let mut write_frames = FramedWrite::new(server_tx, SlimCodec);
 
@@ -225,7 +237,7 @@ impl SlimProto {
         };
         write_frames.send(helo).await?;
 
-        Ok((Box::pin(read_frames), Box::pin(write_frames), server_addr))
+        Ok((Box::pin(read_frames), Box::pin(write_frames)))
     }
 }
 
