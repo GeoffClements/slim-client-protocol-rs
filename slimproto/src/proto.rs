@@ -1,3 +1,8 @@
+//! Contains the protocol object with which we interact with the server.
+//! 
+//! This module also holds the `ClientMessage` and `ServerMessage` types that
+//! are sent to and received from the server.
+
 use bitflags::bitflags;
 use futures::{Sink, SinkExt};
 use http_header::RequestHeader;
@@ -15,6 +20,8 @@ use crate::{
 
 use std::{io, net::Ipv4Addr, pin::Pin, time::Duration};
 
+/// A type that describes all messages that are sent from the client to
+/// the server.
 #[derive(Debug)]
 pub enum ClientMessage {
     Helo {
@@ -107,6 +114,8 @@ bitflags! {
     }
 }
 
+/// A type that describes all messages that are sent from the server to
+/// the client.
 #[derive(Debug)]
 pub enum ServerMessage {
     Serv {
@@ -145,6 +154,24 @@ pub enum ServerMessage {
     Error,
 }
 
+/// The Slim Protocol struct is used to provide `Stream` and `Sink` objects
+/// for communicating with the server.
+/// 
+/// Normal procedure is to:
+/// 1. Create the struct
+/// 2. Add capabilities
+/// 3. Connect to the server
+/// 
+/// e.g.
+/// 
+/// ```rust
+/// let mut proto = SlimProto::new();
+/// proto
+///    .add_capability(Capability::Modelname("Example".to_owned()))
+///    .add_capability(Capability::Model("Example".to_owned()));
+/// (mut proto_stream, mut proto_sink, server_address) = proto.connect().await.unwrap()
+/// ```
+/// 
 #[derive(Default)]
 pub struct SlimProto {
     pub(crate) capabilities: Capabilities,
@@ -155,11 +182,16 @@ impl SlimProto {
         Self::default()
     }
 
+    /// Add a new capability to be sent ot the server. Note that capabilities are sent to the server
+    /// in the order that they are added to the list. They are sent during the `connect` operation.
     pub fn add_capability<'a>(&'a mut self, newcap: Capability) -> &'a mut Self {
         self.capabilities.add(newcap);
         self
     }
 
+    /// Use autodiscover to find the server, connect to it and send the list of capabilities.
+    /// Returns a `Stream` object that streams `ServerMessage`, a `Sink` object that accepts
+    /// `ClientMessage` and the IPv4 address of the server.
     pub async fn connect(
         self,
     ) -> io::Result<(

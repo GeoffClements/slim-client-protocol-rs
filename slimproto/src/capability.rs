@@ -1,5 +1,9 @@
+//! Provides the types needed to send capability data to the server.
+
 use std::fmt;
 
+/// A client capability as recognised by by the server. Sent as a list of capabilities
+/// when the client announces itself to the server
 pub enum Capability {
     Wma,
     Wmap,
@@ -22,6 +26,7 @@ pub enum Capability {
     Hasdisabledac,
 }
 
+/// When sent to the server a capability is sent as text
 impl fmt::Display for Capability {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
@@ -48,10 +53,17 @@ impl fmt::Display for Capability {
     }
 }
 
+/// A list of capabilities which is sent to the server when the client announces itself.
+/// See [SlimpProto](crate::proto::SlimProto) for more details.
 #[derive(Default)]
 pub struct Capabilities(Vec<Capability>);
 
 impl Capabilities {
+    /// Add a new capability to the list. Note that capabilities are sent to the server
+    /// in the order that they are added to the list.
+    /// 
+    /// Normailly you will not need to use this method as capabilites are usually added
+    /// using the [add_capability](crate::proto::SlimProto::add_capability) method.
     pub fn add(&mut self, newcap: Capability) {
         let Self(ref mut caps) = self;
         caps.push(newcap);

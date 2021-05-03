@@ -1,3 +1,6 @@
+//! This module provides the `discover` function which "pings" for a server
+//! on the network returning its address if it exists.
+
 use tokio::{net::UdpSocket, select, time::{interval, sleep}};
 
 use std::{
@@ -8,6 +11,8 @@ use std::{
     time::Duration,
 };
 
+/// An enum which describes the various [TLV](https://en.wikipedia.org/wiki/Type%E2%80%93length%E2%80%93value)
+/// values with which the server can respond.
 #[derive(Debug)]
 pub enum ServerTlv {
     Name(String),
@@ -16,8 +21,20 @@ pub enum ServerTlv {
     Port(u16),
 }
 
+/// A hashmap to hold all TLVs from the server
 type ServerTlvMap = HashMap<String, ServerTlv>;
 
+
+/// Repeatedly send discover "pings" to the server with an optional timeout.
+/// 
+/// Returns:
+/// - `Ok(None)` on timeout
+/// - `Ok(Some(Ipv4Addr, ServerTlvMap))` on server response. Note that the map may be empty
+/// - `io::Error` if an error ocurrs
+/// 
+/// Note that the Slim Protocol is IPv4 only.
+/// This function will try forever if no timeout is passed in which case `Ok(None)` can never
+/// be returned.
 pub async fn discover(timeout: Option<Duration>) -> io::Result<Option<(Ipv4Addr, ServerTlvMap)>> {
     const UDPMAXSIZE: usize = 1450; // as defined in LMS code
 

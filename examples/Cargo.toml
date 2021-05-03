@@ -10,9 +10,9 @@ path = 'hello.rs'
 name = 'boring'
 path = 'boring.rs'
 
-[[example]]
-name = 'player'
-path = 'player.rs'
+# [[example]]
+# name = 'player'
+# path = 'player.rs'
 
 [package]
 edition = '2018'

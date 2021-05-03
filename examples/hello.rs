@@ -1,4 +1,4 @@
-/// Examplle of creating a protocol object and receiveing messages
+/// Example of creating a protocol object and receiveing messages
 /// We create the object and add capabilities.
 /// The protocol object connects to the server and announces
 /// itself with a HELO message. We then print all the messages

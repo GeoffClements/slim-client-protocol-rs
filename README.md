@@ -19,5 +19,4 @@ slim-client-protocol-rs is built against the latest stable release.
 
 This project is licensed under the [MIT license].
 
-<!-- TODO: fix reference -->
-[MIT license]: https://github.com/tokio-rs/tokio/blob/master/LICENSE
+[MIT license]: https://github.com/GeoffClements/slim-client-protocol-rs/blob/master/LICENSE.txt

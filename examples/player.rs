@@ -15,8 +15,8 @@ async fn main() {
     let mut status = StatusData::new(BUFSIZE, BUFSIZE);
     let mut proto = SlimProto::new();
     proto
-        // .add_capability(Capability::Flc)
-        // .add_capability(Capability::Ogg)
+        .add_capability(Capability::Flc)
+        .add_capability(Capability::Ogg)
         .add_capability(Capability::Mp3)
         .add_capability(Capability::Modelname("Example".to_owned()))
         .add_capability(Capability::Model("Example".to_owned()));
@@ -62,7 +62,8 @@ async fn main() {
                                 request.version()
                             );
                         }
-                        music_out.append(Decoder::new(SocketReader::with_capacity(32 * 1024, cx)).unwrap());
+                        // music_out.append(Decoder::new(SocketReader::new(cx)).unwrap());
+                        music_out.append(Decoder::new(SocketReader::with_capacity(160 * 1024, cx)).unwrap());
                     }
                 }
                 _ => {}

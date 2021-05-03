@@ -1,7 +1,13 @@
+//! A convenience module for working with client status data.
+//! 
+//! The Logitech Media Server requires regular status messages from
+//! the client. This module provides convenience types for this.
+
 use std::{fmt, time::Duration};
 
 use crate::ClientMessage;
 
+/// A struct to hold the status data as required by the server
 #[derive(Clone, Debug, Default)]
 pub struct StatusData {
     pub(crate) crlf: u8,
@@ -75,6 +81,7 @@ impl StatusData {
         self
     }
 
+    /// Create a status message for sending to the server
     pub fn make_status_message(&self, msgtype: StatusCode) -> ClientMessage {
         ClientMessage::Stat {
             event_code: msgtype.to_string(),
@@ -83,6 +90,7 @@ impl StatusData {
     }
 }
 
+/// Status code to send as part of the status message
 pub enum StatusCode {
     Connect,
     DecoderReady,
