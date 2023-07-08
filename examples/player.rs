@@ -4,16 +4,14 @@
 
 use slimproto::{
     discovery::discover,
-    proto::{Server, SLIM_PORT},
     status::{StatusCode, StatusData},
     Capabilities, ClientMessage, ServerMessage,
 };
 
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 fn main() {
     // Set up the audio server
-
 
     // The slim protocol loop
     if let Some(mut server) = discover(Some(Duration::from_secs(10))).unwrap() {
@@ -23,7 +21,7 @@ fn main() {
             caps.add_name("Example");
 
             // Prepare the server object with the capabilities and then connect
-            let (mut rx, mut tx) = server.clone().prepare(caps).connect().unwrap();
+            let (mut rx, mut tx) = server.prepare(caps).connect().unwrap();
 
             let mut client_name = String::from("Example_Player");
 
@@ -53,12 +51,7 @@ fn main() {
                         ip_address: ip,
                         sync_group_id: sgid,
                     } => {
-                        server = Server {
-                            ip_address: ip,
-                            port: SLIM_PORT,
-                            tlv_map: HashMap::new(),
-                            sync_group_id: sgid,
-                        };
+                        server = (ip, sgid).into();
                         break;
                     }
                     _ => {}

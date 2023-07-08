@@ -145,7 +145,7 @@ impl From<BytesMut> for ServerMessage {
         const GAIN_FACTOR: f64 = 65536.0;
 
         let msg = String::from_utf8(src.split_to(4).to_vec()).unwrap_or_default();
-        let mut buf = src.split();
+        let mut buf = src;//.split();
 
         match msg.as_str() {
             "serv" => {

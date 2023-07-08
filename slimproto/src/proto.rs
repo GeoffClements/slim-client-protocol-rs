@@ -58,6 +58,18 @@ impl Clone for Server {
     }
 }
 
+// Useful for conversions from a Serv message
+impl From<(Ipv4Addr, Option<String>)> for Server {
+    fn from(value: (Ipv4Addr, Option<String>)) -> Self {
+        Self {
+            ip_address: value.0,
+            port: SLIM_PORT,
+            tlv_map: HashMap::new(),
+            sync_group_id: value.1,
+        }
+    }
+}
+
 /// A prepared server struct is one that has capabilities and is ready
 /// for connection to the Slim server
 pub struct PreparedServer {
@@ -66,11 +78,11 @@ pub struct PreparedServer {
 }
 
 impl Server {
-    pub fn prepare(self, mut caps: Capabilities) -> PreparedServer {
+    pub fn prepare(&self, mut caps: Capabilities) -> PreparedServer {
         if let Some(sgid) = &self.sync_group_id {
             caps.add(Capability::Syncgroupid(sgid.to_owned()));
         }
-        PreparedServer { server: self, caps }
+        PreparedServer { server: self.clone(), caps }
     }
 }
 
