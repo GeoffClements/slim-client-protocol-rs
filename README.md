@@ -1,12 +1,12 @@
 # slim-client-protocol-rs
 
-A Tokio / Futures based crate for the Slim protocol
+A crate for the Slim protocol
 
 The [Slim Protocol][slimtcpwiki] is a TCP protocol for streaming audio files
 to a [slim device][slimdevices].
 
-This crate simplifies writing of a client for this protocol by providing an
-asynchronous library that sends and receives messages to a slim server.
+This crate simplifies writing of a client for this protocol by providing a
+library that sends and receives messages to a slim server.
 
 [slimtcpwiki]: https://wiki.slimdevices.com/index.php/SlimProto_TCP_protocol
 [slimdevices]: https://en.wikipedia.org/wiki/Slim_Devices
