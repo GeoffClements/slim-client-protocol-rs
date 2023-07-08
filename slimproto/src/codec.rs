@@ -109,13 +109,19 @@ impl From<ClientMessage> for BytesMut {
                 frame.put_u32(stat_data.fullness);
                 frame.put_u64(stat_data.bytes_received);
                 frame.put_u16(stat_data.sig_strength);
-                frame.put_u32(stat_data.jiffies.as_millis().try_into().unwrap_or(0));
+                frame.put_u32(stat_data.jiffies.as_millis().try_into().unwrap_or_default());
                 frame.put_u32(stat_data.output_buffer_size);
                 frame.put_u32(stat_data.output_buffer_fullness);
                 frame.put_u32(stat_data.elapsed_seconds);
                 frame.put_u16(stat_data.voltage);
                 frame.put_u32(stat_data.elapsed_milliseconds);
-                frame.put_u32(stat_data.timestamp.as_millis().try_into().unwrap_or(0));
+                frame.put_u32(
+                    stat_data
+                        .timestamp
+                        .as_millis()
+                        .try_into()
+                        .unwrap_or_default(),
+                );
                 frame.put_u16(stat_data.error_code);
             }
 
@@ -138,7 +144,7 @@ impl From<BytesMut> for ServerMessage {
     fn from(mut src: BytesMut) -> ServerMessage {
         const GAIN_FACTOR: f64 = 65536.0;
 
-        let msg = String::from_utf8(src.split_to(4).to_vec()).unwrap_or(String::new());
+        let msg = String::from_utf8(src.split_to(4).to_vec()).unwrap_or_default();
         let mut buf = src.split();
 
         match msg.as_str() {
@@ -249,8 +255,7 @@ impl From<BytesMut> for ServerMessage {
                             _ => return ServerMessage::Error,
                         };
 
-                        let flags = StreamFlags::from_bits(buf.split_to(1)[0])
-                            .unwrap_or(StreamFlags::empty());
+                        let flags = StreamFlags::from_bits(buf.split_to(1)[0]).unwrap_or_default();
 
                         let output_threshold = Duration::from_millis(buf.split_to(1)[0] as u64);
 
@@ -331,7 +336,7 @@ impl From<BytesMut> for ServerMessage {
                     return ServerMessage::Error;
                 }
 
-                let _ = buf.split_to(10);
+                buf.advance(10);
                 let left = buf.split_to(4).get_u32() as f64 / GAIN_FACTOR;
                 let right = buf.split_to(4).get_u32() as f64 / GAIN_FACTOR;
                 ServerMessage::Gain(left, right)
@@ -347,10 +352,8 @@ impl From<BytesMut> for ServerMessage {
                         if buf.len() == 0 {
                             ServerMessage::Queryname
                         } else {
-                            let name: String = buf[..buf.len() - 1]
-                                .into_iter()
-                                .map(|c| *c as char)
-                                .collect();
+                            let name = String::from_utf8(buf[..buf.len() - 1].to_vec())
+                                .unwrap_or_default();
                             ServerMessage::Setname(name)
                         }
                     }

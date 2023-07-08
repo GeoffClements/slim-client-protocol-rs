@@ -7,6 +7,8 @@ use bitflags::bitflags;
 use http_tiny::Header;
 use mac_address::{get_mac_address, MacAddress};
 
+pub const SLIM_PORT: u16 = 3483;
+
 use crate::{
     codec::SlimCodec,
     framing,
@@ -35,6 +37,7 @@ pub enum ServerTlv {
 /// A hashmap to hold all TLVs from the server
 pub(crate) type ServerTlvMap = HashMap<String, ServerTlv>;
 
+/// A Server struct to hold the connection details
 pub struct Server {
     pub ip_address: std::net::Ipv4Addr,
     pub port: u16,
@@ -42,6 +45,21 @@ pub struct Server {
     pub sync_group_id: Option<String>,
 }
 
+/// Allow to clone the server
+/// We'll lose the TLV map but it's not needed for connecting to the server
+impl Clone for Server {
+    fn clone(&self) -> Self {
+        Self {
+            ip_address: self.ip_address,
+            port: self.port,
+            tlv_map: HashMap::new(),
+            sync_group_id: self.sync_group_id.as_ref().map(String::from),
+        }
+    }
+}
+
+/// A prepared server struct is one that has capabilities and is ready
+/// for connection to the Slim server
 pub struct PreparedServer {
     server: Server,
     caps: Capabilities,
@@ -172,7 +190,7 @@ pub enum TransType {
 }
 
 bitflags! {
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Default, PartialEq)]
     pub struct StreamFlags: u8 {
         const INF_LOOP = 0b1000_0000;
         const NO_RESTART_DECODER = 0b0100_0000;

@@ -1,7 +1,7 @@
 //! This module provides the `discover` function which "pings" for a server
 //! on the network returning its address if it exists.
 
-use crate::proto::{Server, ServerTlv, ServerTlvMap};
+use crate::proto::{Server, ServerTlv, ServerTlvMap, SLIM_PORT};
 
 use std::{
     collections::HashMap,
@@ -14,8 +14,6 @@ use std::{
     thread::{sleep, spawn},
     time::Duration,
 };
-
-const SLIM_PORT: u16 = 3483;
 
 /// Repeatedly send discover "pings" to the server with an optional timeout.
 ///
@@ -79,18 +77,15 @@ fn decode_tlv(buf: &[u8]) -> ServerTlvMap {
     let mut view = &buf[..];
 
     while view.len() > 4 && view[0].is_ascii() {
-        let token: String = view[..4].iter().map(|c| *c as char).collect();
+        let token = String::from_utf8(view[..4].to_vec()).unwrap_or_default();
         let valen = view[4] as usize;
         view = &view[5..];
 
-        let value = if view.len() >= valen {
-            &view[..valen]
-        } else {
+        if view.len() < valen {
             break;
         }
-        .iter()
-        .map(|c| *c as char)
-        .collect::<String>();
+
+        let value = String::from_utf8(view[..valen].to_vec()).unwrap_or_default();
 
         let value = match token.as_str() {
             "NAME" => ServerTlv::Name(value),

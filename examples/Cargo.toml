@@ -6,13 +6,13 @@ path = 'discover.rs'
 name = 'hello'
 path = 'hello.rs'
 
-# [[example]]
-# name = 'boring'
-# path = 'boring.rs'
+[[example]]
+name = 'keep_alive'
+path = 'keep_alive.rs'
 
-# [[example]]
-# name = 'player'
-# path = 'player.rs'
+[[example]]
+name = 'player'
+path = 'player.rs'
 
 [package]
 edition = '2021'

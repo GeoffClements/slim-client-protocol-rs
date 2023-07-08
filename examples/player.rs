@@ -1,72 +1,68 @@
-/// A basic player using Rodio
-use futures::{SinkExt, StreamExt};
-use rodio::{self, Decoder, OutputStream, Sink};
+/*
+ Player
+*/
+
 use slimproto::{
-    util::socketreader::SocketReader, Capability, ClientMessage, ServerMessage, SlimProto,
-    StatusCode, StatusData,
+    discovery::discover,
+    proto::{Server, SLIM_PORT},
+    status::{StatusCode, StatusData},
+    Capabilities, ClientMessage, ServerMessage,
 };
 
-use std::{io::Write, net::TcpStream};
+use std::{collections::HashMap, time::Duration};
 
-const BUFSIZE: u32 = 8 * 1024;
+fn main() {
+    // Set up the audio server
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    let mut status = StatusData::new(BUFSIZE, BUFSIZE);
-    let mut proto = SlimProto::new();
-    proto
-        .add_capability(Capability::Flc)
-        .add_capability(Capability::Ogg)
-        .add_capability(Capability::Mp3)
-        .add_capability(Capability::Modelname("Example".to_owned()))
-        .add_capability(Capability::Model("Example".to_owned()));
-    let (_music_stream, music_handle) = OutputStream::try_default().unwrap();
-    let music_out = Sink::try_new(&music_handle).unwrap();
-    if let Ok((mut proto_stream, mut proto_sink, server_addr)) = proto.connect().await {
-        while let Some(Ok(msg)) = proto_stream.next().await {
-            println!("{:?}", msg);
-            match msg {
-                ServerMessage::Status(timestamp) => {
-                    status.set_timestamp(timestamp);
-                    let msg = status.make_status_message(StatusCode::Timer);
-                    if let Err(_) = proto_sink.send(msg).await {
+
+    // The slim protocol loop
+    if let Some(mut server) = discover(Some(Duration::from_secs(10))).unwrap() {
+        loop {
+            // Add some capabilities
+            let mut caps = Capabilities::default();
+            caps.add_name("Example");
+
+            // Prepare the server object with the capabilities and then connect
+            let (mut rx, mut tx) = server.clone().prepare(caps).connect().unwrap();
+
+            let mut client_name = String::from("Example_Player");
+
+            // Make the status data so that we can respond to the server ticks
+            let mut status = StatusData::new(0, 0);
+
+            // React to messages from the server
+            while let Ok(msg) = rx.recv() {
+                println!("{:?}", msg);
+                match msg {
+                    // Server wants to know our name
+                    ServerMessage::Queryname => tx
+                        .send(ClientMessage::Name(String::from(&client_name)))
+                        .unwrap(),
+                    // Server wants to set our name
+                    ServerMessage::Setname(name) => {
+                        client_name = name;
+                    }
+                    // Status tick from the server, respond with updated status data
+                    ServerMessage::Status(ts) => {
+                        status.set_timestamp(ts);
+                        let msg = status.make_status_message(StatusCode::Timer);
+                        tx.send(msg).unwrap();
+                    }
+                    // Request to change to another server
+                    ServerMessage::Serv {
+                        ip_address: ip,
+                        sync_group_id: sgid,
+                    } => {
+                        server = Server {
+                            ip_address: ip,
+                            port: SLIM_PORT,
+                            tlv_map: HashMap::new(),
+                            sync_group_id: sgid,
+                        };
                         break;
                     }
+                    _ => {}
                 }
-                ServerMessage::Queryname => {
-                    if let Err(_) = proto_sink
-                        .send(ClientMessage::Name("Rodio".to_owned()))
-                        .await
-                    {
-                        break;
-                    }
-                }
-                ServerMessage::Stream {
-                    server_ip,
-                    server_port,
-                    http_headers,
-                    ..
-                } => {
-                    let server_addr = if server_ip.octets() == [0u8; 4] {
-                        server_addr
-                    } else {
-                        server_ip
-                    };
-                    if let Ok(mut cx) = TcpStream::connect((server_addr, server_port)) {
-                        if let Some(request) = http_headers {
-                            let _ = write!(
-                                cx,
-                                "{} {} {}\r\n\r\n",
-                                request.method(),
-                                request.uri(),
-                                request.version()
-                            );
-                        }
-                        // music_out.append(Decoder::new(SocketReader::new(cx)).unwrap());
-                        music_out.append(Decoder::new(SocketReader::with_capacity(160 * 1024, cx)).unwrap());
-                    }
-                }
-                _ => {}
             }
         }
     }

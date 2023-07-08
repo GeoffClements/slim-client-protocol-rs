@@ -15,15 +15,6 @@ bitflags = "2.3.3"
 bytes = "1.4.0"
 http_tiny = "1.1.0"
 mac_address = "1.1.5"
-# bitflags = '1.2'
-# bytes = '1.0'
-# futures = "0.3"
-# mac_address = '1.1'
-# tokio = {version = '1.4', features = ['net', 'time']}
-# tokio-stream = "0.1"
-# tokio-util = {version = '0.6', features = ['codec']}
 
 [dev-dependencies]
 socket-server-mocker = "0.0.4"
-# futures = "0.3"
-# tokio = {version = '1.4', features = ['macros', 'test-util']}
