@@ -1,8 +1,11 @@
-use bytes::{buf::BufMut, Buf, BytesMut};
-use http_header::{Header, RequestHeader};
-use tokio_util::codec::{Decoder, Encoder};
+use bytes::{Buf, BufMut, BytesMut};
+
+// use bytes::{buf::BufMut, Buf, BytesMut};
+use http_tiny::{Header, Limiter};
+// use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
+    framing::{Decoder, Encoder},
     proto::{
         AutoStart, Format, PcmChannels, PcmEndian, PcmSampleRate, PcmSampleSize, SpdifEnable,
         StreamFlags, TransType,
@@ -10,19 +13,15 @@ use crate::{
     ClientMessage, ServerMessage,
 };
 
-use std::{
-    convert::{TryFrom, TryInto},
-    io,
-    net::Ipv4Addr,
-    time::Duration,
-};
+use std::{convert::TryInto, io, net::Ipv4Addr, time::Duration};
 
+#[derive(Clone)]
 pub struct SlimCodec;
 
-impl Encoder<ClientMessage> for SlimCodec {
-    type Error = io::Error;
+impl Encoder for SlimCodec {
+    type Item = ClientMessage;
 
-    fn encode(&mut self, item: ClientMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> io::Result<()> {
         dst.extend(BytesMut::from(item));
         Ok(())
     }
@@ -30,7 +29,6 @@ impl Encoder<ClientMessage> for SlimCodec {
 
 impl Decoder for SlimCodec {
     type Item = ServerMessage;
-    type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<ServerMessage>> {
         if buf.len() <= 2 {
@@ -46,7 +44,7 @@ impl Decoder for SlimCodec {
             return Ok(None);
         };
 
-        let _ = buf.split_to(2);
+        buf.advance(2);
         let msg = buf.split_to(frame_size);
 
         match msg.into() {
@@ -140,7 +138,7 @@ impl From<BytesMut> for ServerMessage {
     fn from(mut src: BytesMut) -> ServerMessage {
         const GAIN_FACTOR: f64 = 65536.0;
 
-        let msg: String = src.split_to(4).into_iter().map(|c| c as char).collect();
+        let msg = String::from_utf8(src.split_to(4).to_vec()).unwrap_or(String::new());
         let mut buf = src.split();
 
         match msg.as_str() {
@@ -265,15 +263,7 @@ impl From<BytesMut> for ServerMessage {
                         let server_ip = Ipv4Addr::from(buf.split_to(4).get_u32());
 
                         let http_headers = if buf.len() > 0 {
-                            if let Ok(header) = Header::parse(&buf[..]) {
-                                if let Ok(req) = RequestHeader::try_from(header) {
-                                    Some(req)
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
+                            Header::read(&mut Limiter::new(&mut buf.as_ref(), 1024, 1024)).ok()
                         } else {
                             None
                         };
@@ -379,14 +369,21 @@ impl From<BytesMut> for ServerMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::status::StatusData;
-    use futures::{SinkExt, StreamExt};
+    use crate::{
+        framing::{FramedRead, FramedWrite},
+        status::StatusData,
+    };
     use mac_address::MacAddress;
     use std::io::Cursor;
-    use tokio_util::codec::{FramedRead, FramedWrite};
 
-    #[tokio::test]
-    async fn test_send_helo() {
+    fn do_send(buf: &mut [u8], frame: ClientMessage) {
+        let buf = Cursor::new(&mut buf[..]);
+        let mut framed = FramedWrite::new(buf, SlimCodec);
+        framed.send(frame).unwrap();
+    }
+
+    #[test]
+    fn send_helo() {
         let helo = ClientMessage::Helo {
             device_id: 0,
             revision: 1,
@@ -399,7 +396,7 @@ mod tests {
         };
 
         let mut buf = [0u8; 48];
-        do_send(&mut buf, helo).await;
+        do_send(&mut buf, helo);
         assert_eq!(
             &buf[..32],
             &[
@@ -413,18 +410,18 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_send_bye() {
+    #[test]
+    fn send_bye() {
         let bye = ClientMessage::Bye(55);
 
         let mut buf = [0u8; 9];
-        do_send(&mut buf, bye).await;
+        do_send(&mut buf, bye);
 
         assert_eq!(&buf[..], &[b'B', b'Y', b'E', b'!', 0, 0, 0, 1, 55]);
     }
 
-    #[tokio::test]
-    async fn test_send_stat() {
+    #[test]
+    fn send_stat() {
         let stat_data = StatusData {
             crlf: 0,
             buffer_size: 1234,
@@ -446,7 +443,7 @@ mod tests {
         };
 
         let mut buf = [0u8; 61];
-        do_send(&mut buf, stat).await;
+        do_send(&mut buf, stat);
 
         assert_eq!(
             &buf[..32],
@@ -464,12 +461,12 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_send_name() {
+    #[test]
+    fn send_name() {
         let name = ClientMessage::Name("BadBoy".to_owned());
 
         let mut buf = [0u8; 15];
-        do_send(&mut buf, name).await;
+        do_send(&mut buf, name);
 
         assert_eq!(
             &buf[..],
@@ -477,16 +474,16 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_recv_serv() {
+    #[test]
+    fn recv_serv() {
         let buf = [
             0u8, 12, b's', b'e', b'r', b'v', 172, 16, 1, 2, b's', b'y', b'n', b'c',
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Serv {
+        if let Ok(ServerMessage::Serv {
             ip_address,
             sync_group_id,
-        })) = framed.next().await
+        }) = framed.recv()
         {
             assert_eq!(ip_address, Ipv4Addr::new(172, 16, 1, 2));
             assert_eq!(sync_group_id, Some("sync".to_owned()));
@@ -495,107 +492,107 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_status() {
+    #[test]
+    fn recv_status() {
         let buf = [
             0u8, 28, b's', b't', b'r', b'm', b't', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Status(d))) = framed.next().await {
+        if let Ok(ServerMessage::Status(d)) = framed.recv() {
             assert_eq!(d, Duration::from_millis(252711186));
         } else {
             panic!("STRMt message not received");
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_stop() {
+    #[test]
+    fn recv_stop() {
         let buf = [
             0u8, 28, b's', b't', b'r', b'm', b'q', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Stop)) = framed.next().await {
+        if let Ok(ServerMessage::Stop) = framed.recv() {
         } else {
             panic!("STRMq message not received");
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_pause() {
+    #[test]
+    fn recv_pause() {
         let buf = [
             0u8, 28, b's', b't', b'r', b'm', b'p', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Pause(p))) = framed.next().await {
+        if let Ok(ServerMessage::Pause(p)) = framed.recv() {
             assert_eq!(p, 252711186);
         } else {
             panic!("STRMp message not received");
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_unpause() {
+    #[test]
+    fn recv_unpause() {
         let buf = [
             0u8, 28, b's', b't', b'r', b'm', b'u', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Unpause(p))) = framed.next().await {
+        if let Ok(ServerMessage::Unpause(p)) = framed.recv() {
             assert_eq!(p, 252711186);
         } else {
             panic!("STRMu message not received");
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_skip() {
+    #[test]
+    fn recv_skip() {
         let buf = [
             0u8, 28, b's', b't', b'r', b'm', b'a', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Skip(p))) = framed.next().await {
+        if let Ok(ServerMessage::Skip(p)) = framed.recv() {
             assert_eq!(p, 252711186);
         } else {
             panic!("STRMa message not received");
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_unrecognised() {
+    #[test]
+    fn recv_unrecognised() {
         let buf = [
             0u8, 28, b's', b't', b'r', b'm', b'x', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Unrecognised(s))) = framed.next().await {
+        if let Ok(ServerMessage::Unrecognised(s)) = framed.recv() {
             assert_eq!(s, "strm_x".to_owned());
         } else {
             panic!("STRMx message not received");
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_enable() {
+    #[test]
+    fn recv_enable() {
         let buf = [0u8, 6, b'a', b'u', b'd', b'e', 0, 1];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Enable(a, b))) = framed.next().await {
+        if let Ok(ServerMessage::Enable(a, b)) = framed.recv() {
             assert_eq!((a, b), (false, true));
         } else {
             panic!("AUDE message not received");
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_gain() {
+    #[test]
+    fn recv_gain() {
         let buf = [
             0u8, 22, b'a', b'u', b'd', b'g', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 128, 0,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
+        if let Ok(msg) = framed.recv() {
             match msg {
                 ServerMessage::Gain(left, right) => {
                     assert_eq!(left, 1.0);
@@ -608,13 +605,13 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_setname() {
+    #[test]
+    fn recv_setname() {
         let buf = [
             0u8, 13, b's', b'e', b't', b'd', 0, b'n', b'e', b'w', b'n', b'a', b'm', b'e', 0,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(msg)) = framed.next().await {
+        if let Ok(msg) = framed.recv() {
             match msg {
                 ServerMessage::Setname(name) => {
                     assert_eq!(name, "newname".to_owned());
@@ -626,28 +623,28 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_queryname() {
+    #[test]
+    fn recv_queryname() {
         let buf = [0u8, 5, b's', b'e', b't', b'd', 0];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Queryname)) = framed.next().await {
+        if let Ok(ServerMessage::Queryname) = framed.recv() {
         } else {
             panic!("SETD message not received");
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_disabledac() {
+    #[test]
+    fn recv_disabledac() {
         let buf = [0u8, 5, b's', b'e', b't', b'd', 4];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::DisableDac)) = framed.next().await {
+        if let Ok(ServerMessage::DisableDac) = framed.recv() {
         } else {
             panic!("SETD message not received");
         }
     }
 
-    #[tokio::test]
-    async fn test_recv_strm() {
+    #[test]
+    fn recv_strm() {
         fn do_panic() {
             panic!("STRMs message not received");
         }
@@ -656,7 +653,7 @@ mod tests {
             b'1', 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Some(Ok(ServerMessage::Stream {
+        if let Ok(ServerMessage::Stream {
             autostart,
             format,
             pcmsamplesize,
@@ -673,7 +670,7 @@ mod tests {
             server_port,
             server_ip,
             http_headers,
-        })) = framed.next().await
+        }) = framed.recv()
         {
             if let AutoStart::Auto = autostart {
             } else {
@@ -717,11 +714,5 @@ mod tests {
             assert_eq!(server_ip, Ipv4Addr::new(172, 16, 1, 2));
             assert!(http_headers.is_none());
         }
-    }
-
-    async fn do_send(buf: &mut [u8], frame: ClientMessage) {
-        let buf = Cursor::new(&mut buf[..]);
-        let mut framed = FramedWrite::new(buf, SlimCodec);
-        let _ = framed.send(frame).await;
     }
 }

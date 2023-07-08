@@ -55,18 +55,30 @@ impl fmt::Display for Capability {
 
 /// A list of capabilities which is sent to the server when the client announces itself.
 /// See [SlimpProto](crate::proto::SlimProto) for more details.
-#[derive(Default)]
 pub struct Capabilities(Vec<Capability>);
 
 impl Capabilities {
     /// Add a new capability to the list. Note that capabilities are sent to the server
     /// in the order that they are added to the list.
-    /// 
-    /// Normailly you will not need to use this method as capabilites are usually added
+    ///
+    /// Normally you will not need to use this method as capabilities are usually added
     /// using the [add_capability](crate::proto::SlimProto::add_capability) method.
     pub fn add(&mut self, newcap: Capability) {
         let Self(ref mut caps) = self;
         caps.push(newcap);
+    }
+
+    pub fn add_name(&mut self, name: &str) {
+        self.add(Capability::Modelname(name.to_owned()));
+    }
+}
+
+impl Default for Capabilities {
+    fn default() -> Self {
+        let mut caps = Vec::new();
+        caps.push(Capability::Accurateplaypoints);
+        caps.push(Capability::Model("squeezelite".to_owned()));
+        Self(caps)
     }
 }
 
@@ -86,15 +98,7 @@ mod tests {
     fn single() {
         let mut c = Capabilities::default();
         c.add(Capability::Mp3);
-        assert_eq!(c.to_string(), "mp3");
-    }
-
-    #[test]
-    fn two_bools() {
-        let mut c = Capabilities::default();
-        c.add(Capability::Mp3);
-        c.add(Capability::Ogg);
-        assert_eq!(c.to_string(), "mp3,ogg");
+        assert_eq!(c.to_string(), "AccuratePlayPoints,Model=squeezelite,mp3");
     }
 
     #[test]
@@ -103,6 +107,13 @@ mod tests {
         c.add(Capability::Mp3);
         c.add(Capability::Maxsamplerate(9600));
         c.add(Capability::Ogg);
-        assert_eq!(c.to_string(), "mp3,MaxSampleRate=9600,ogg");
+        assert_eq!(c.to_string(), "AccuratePlayPoints,Model=squeezelite,mp3,MaxSampleRate=9600,ogg");
+    }
+
+    #[test]
+    fn name() {
+        let mut c = Capabilities::default();
+        c.add_name("Testing");
+        assert_eq!(c.to_string(), "AccuratePlayPoints,Model=squeezelite,Modelname=Testing");
     }
 }

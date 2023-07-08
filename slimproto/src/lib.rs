@@ -1,4 +1,4 @@
-//! Slim Protocol using [Tokio][tokio] and [Futures][futures]
+//! Slim Protocol for Rust Clients
 //!
 //! This library simplifies communicating with a [Logitech Media Server, aka LMS, aka Slim Server][lms]
 //! by providing suitable asynchronous objects.
@@ -14,21 +14,20 @@
 //! In order to use this library it's a good idea to have studied the [Slim TCP Protocol][slimtcp] first
 //! so that this library makes sense.
 //!
-//! [tokio]: https://docs.rs/tokio/tokio/
-//! [futures]: https://docs.rs/futures/futures/
 //! [lms]: https://en.wikipedia.org/wiki/Logitech_Media_Server
 //! [slimproto]: crate::proto::SlimProto
-//! [discover]: crate::discovery::discover
-//! [statusdata]: crate::status::StatusData
-//! [slimtcp]: https://wiki.slimdevices.com/index.php/SlimProto_TCP_protocol
+// [discover]: crate::discovery::discover
+// [statusdata]: crate::status::StatusData
+// [slimtcp]: https://wiki.slimdevices.com/index.php/SlimProto_TCP_protocol
 //!
 
 pub mod capability;
 pub(crate) mod codec;
 pub mod discovery;
+pub(crate) mod framing;
 pub mod proto;
 pub mod status;
 
 pub use capability::{Capabilities, Capability};
-pub use proto::{ClientMessage, ServerMessage, SlimProto};
-pub use status::{StatusCode, StatusData};
+pub use proto::{ClientMessage, ServerMessage};
+// pub use status::{StatusCode, StatusData};

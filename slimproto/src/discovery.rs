@@ -1,93 +1,77 @@
 //! This module provides the `discover` function which "pings" for a server
 //! on the network returning its address if it exists.
 
-use tokio::{net::UdpSocket, select, time::{interval, sleep}};
+use crate::proto::{Server, ServerTlv, ServerTlvMap};
 
 use std::{
     collections::HashMap,
     io,
-    net::{IpAddr, Ipv4Addr},
-    sync::Arc,
+    net::{Ipv4Addr, SocketAddr, UdpSocket},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread::{sleep, spawn},
     time::Duration,
 };
 
-/// An enum which describes the various [TLV](https://en.wikipedia.org/wiki/Type%E2%80%93length%E2%80%93value)
-/// values with which the server can respond.
-#[derive(Debug)]
-pub enum ServerTlv {
-    Name(String),
-    Version(String),
-    Address(Ipv4Addr),
-    Port(u16),
-}
-
-/// A hashmap to hold all TLVs from the server
-type ServerTlvMap = HashMap<String, ServerTlv>;
-
+const SLIM_PORT: u16 = 3483;
 
 /// Repeatedly send discover "pings" to the server with an optional timeout.
-/// 
+///
 /// Returns:
 /// - `Ok(None)` on timeout
-/// - `Ok(Some(Ipv4Addr, ServerTlvMap))` on server response. Note that the map may be empty
-/// - `io::Error` if an error ocurrs
-/// 
+/// - `Ok(Some(Server))` on server response.
+/// - `io::Error` if an error occurs
+///
 /// Note that the Slim Protocol is IPv4 only.
 /// This function will try forever if no timeout is passed in which case `Ok(None)` can never
 /// be returned.
-pub async fn discover(timeout: Option<Duration>) -> io::Result<Option<(Ipv4Addr, ServerTlvMap)>> {
+pub fn discover(timeout: Option<Duration>) -> io::Result<Option<Server>> {
     const UDPMAXSIZE: usize = 1450; // as defined in LMS code
 
-    let cx = UdpSocket::bind((Ipv4Addr::new(0, 0, 0, 0), 0)).await?;
+    let cx = UdpSocket::bind((Ipv4Addr::new(0, 0, 0, 0), 0))?;
     cx.set_broadcast(true)?;
-    let udp_rx = Arc::new(cx);
-    let pings = send_pings(udp_rx.clone());
+    cx.set_read_timeout(timeout)?;
 
-    let mut server_addr = None;
-    let mut server_tlv = HashMap::new();
+    let cx_send = cx.try_clone()?;
+    let running = Arc::new(AtomicBool::new(true));
+    let is_running = running.clone();
+    spawn(move || {
+        let buf = b"eNAME\0IPAD\0JSON\0VERS\0";
+        while is_running.load(Ordering::Relaxed) {
+            cx_send
+                .send_to(buf, (Ipv4Addr::new(255, 255, 255, 255), SLIM_PORT))
+                .ok();
+            sleep(Duration::from_secs(5));
+        }
+    });
+
     let mut buf = [0u8; UDPMAXSIZE];
-    select! {
-        res = pings => {
-            if let Err(err) = res {
-                return Err(err);
-            }
+    let response = cx.recv_from(&mut buf);
+    running.store(false, Ordering::Relaxed);
+
+    response.map_or_else(
+        |e| match e.kind() {
+            io::ErrorKind::WouldBlock => Ok(None),
+            _ => Err(e),
         },
-        res = udp_rx.recv_from(&mut buf) => {
-            match res {
-                Ok((len, socket_addr)) => {
-                    server_addr = if let IpAddr::V4(addr) = socket_addr.ip() {
-                        Some(addr)
-                    } else {
-                        None
-                    };
+        |(len, sock_addr)| match sock_addr {
+            SocketAddr::V4(addr) => Ok(Some(Server {
+                ip_address: *addr.ip(),
+                port: SLIM_PORT,
+                tlv_map: {
                     if len > 0 && buf[0] == b'E' {
-                        server_tlv = decode_tlv(&buf[1..]);
+                        decode_tlv(&buf[1..])
+                    } else {
+                        HashMap::new()
                     }
                 },
-                Err(e) => return Err(e),
-            }
+                sync_group_id: None,
+            })),
+            _ => Ok(None),
         },
-        _ = sleep(timeout.unwrap_or_default()), if timeout.is_some() => {}
-    }
-
-    if let Some(server_addr) = server_addr {
-        Ok(Some((server_addr, server_tlv)))
-    } else {
-        Ok(None)
-    }
-}
-
-async fn send_pings(udp_tx: Arc<UdpSocket>) -> tokio::io::Result<()> {
-    const PING_INTERVAL: u64 = 5;
-    const SLIM_PORT: u16 = 3483;
-
-    let buf = "eNAME\0IPAD\0JSON\0VERS\0".as_bytes();
-    let bcaddr = Ipv4Addr::new(255, 255, 255, 255);
-    let mut ping_interval = interval(Duration::from_secs(PING_INTERVAL));
-    loop {
-        ping_interval.tick().await;
-        udp_tx.send_to(&buf, &(bcaddr, SLIM_PORT)).await?;
-    }
+    )
 }
 
 fn decode_tlv(buf: &[u8]) -> ServerTlvMap {
@@ -141,14 +125,14 @@ fn decode_tlv(buf: &[u8]) -> ServerTlvMap {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_discover() {
-        let res = discover(Some(Duration::from_secs(1))).await;
+    #[test]
+    fn server_discover() {
+        let res = discover(Some(Duration::from_secs(1)));
         assert!(res.is_ok());
 
-        if let Ok(Some((ip, r))) = res {
-            assert!(!ip.is_unspecified());
-            assert!(r.len() > 0);
+        if let Ok(Some(server)) = res {
+            assert!(!server.ip_address.is_unspecified());
+            assert!(server.tlv_map.len() > 0);
         }
     }
 }

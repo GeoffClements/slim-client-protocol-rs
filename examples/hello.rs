@@ -1,24 +1,39 @@
-/// Example of creating a protocol object and receiveing messages
-/// We create the object and add capabilities.
-/// The protocol object connects to the server and announces
-/// itself with a HELO message. We then print all the messages
-/// from the server.
-///
-/// The server will eventually disconnect because we are not
-/// responding to any of the status messages.
-use futures::StreamExt;
-use slimproto::{Capability, SlimProto};
+/**
+ Requires a Slim server on the network!
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() {
-    let mut proto = SlimProto::new();
-    proto
-        .add_capability(Capability::Modelname("Example".to_owned()))
-        .add_capability(Capability::Model("Example".to_owned()));
+ Example of discovering a server, saying hello and receiving
+ messages.
 
-    if let Ok((mut proto_stream, _, _)) = proto.connect().await {
-        while let Some(Ok(msg)) = proto_stream.next().await {
-            println!("{:?}", msg);
+ We create minimal capabilities to send to the server.
+
+ We then connect to the server and announce our presence
+ with a HELO message. We then print all the messages
+ from the server as they arrive.
+
+ The server will eventually disconnect because we are not
+ responding to any of the status messages so we use a timeout
+ to quit.
+*/
+use slimproto::{discovery::discover, Capabilities};
+use std::time::Duration;
+
+fn main() {
+    // Spawn a main thread to allow a timeout
+    std::thread::spawn(|| {
+        // Discover server
+        if let Some(server) = discover(Some(Duration::from_secs(10))).unwrap() {
+            // Add some minimal capabilities
+            let mut caps = Capabilities::default();
+            caps.add_name("Example");
+
+            // Prepare the server object with the capabilities and then connect
+            let (mut rx, _tx) = server.prepare(caps).connect().unwrap();
+
+            // Print messages as we receive them
+            while let Ok(msg) = rx.recv() {
+                println!("{:?}", msg);
+            }
         }
-    }
+    });
+    std::thread::sleep(Duration::from_secs(10));
 }

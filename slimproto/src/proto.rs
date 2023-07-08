@@ -1,24 +1,90 @@
-//! Contains the protocol object with which we interact with the server.
-//!
-//! This module also holds the `ClientMessage` and `ServerMessage` types that
-//! are sent to and received from the server.
+// //! Contains the protocol object with which we interact with the server.
+// //!
+// //! This module also holds the `ClientMessage` and `ServerMessage` types that
+// //! are sent to and received from the server.
 
 use bitflags::bitflags;
-use futures::{Sink, SinkExt};
-use http_header::RequestHeader;
+use http_tiny::Header;
 use mac_address::{get_mac_address, MacAddress};
-use tokio::net::TcpStream;
-use tokio_stream::Stream;
-use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::{
-    capability::{Capabilities, Capability},
     codec::SlimCodec,
-    discovery::discover,
+    framing,
+    framing::{FramedRead, FramedWrite},
     status::StatusData,
+    Capabilities, Capability,
 };
 
-use std::{io, net::Ipv4Addr, pin::Pin, time::Duration};
+use std::{
+    collections::HashMap,
+    io::{self, Read, Write},
+    net::{Ipv4Addr, TcpStream},
+    time::Duration,
+};
+
+/// An enum which describes the various [TLV](https://en.wikipedia.org/wiki/Type%E2%80%93length%E2%80%93value)
+/// values with which the server can respond.
+#[derive(Debug)]
+pub enum ServerTlv {
+    Name(String),
+    Version(String),
+    Address(Ipv4Addr),
+    Port(u16),
+}
+
+/// A hashmap to hold all TLVs from the server
+pub(crate) type ServerTlvMap = HashMap<String, ServerTlv>;
+
+pub struct Server {
+    pub ip_address: std::net::Ipv4Addr,
+    pub port: u16,
+    pub tlv_map: ServerTlvMap,
+    pub sync_group_id: Option<String>,
+}
+
+pub struct PreparedServer {
+    server: Server,
+    caps: Capabilities,
+}
+
+impl Server {
+    pub fn prepare(self, mut caps: Capabilities) -> PreparedServer {
+        if let Some(sgid) = &self.sync_group_id {
+            caps.add(Capability::Syncgroupid(sgid.to_owned()));
+        }
+        PreparedServer { server: self, caps }
+    }
+}
+
+impl PreparedServer {
+    pub fn connect(
+        self,
+    ) -> io::Result<(
+        FramedRead<SlimCodec, impl Read>,
+        FramedWrite<SlimCodec, impl Write>,
+    )> {
+        const SLIM_PORT: u16 = 3483;
+        let cx = TcpStream::connect((self.server.ip_address, SLIM_PORT))?;
+
+        let helo = ClientMessage::Helo {
+            device_id: 12,
+            revision: 0,
+            mac: match get_mac_address() {
+                Ok(Some(mac)) => mac,
+                _ => MacAddress::new([1, 2, 3, 4, 5, 6]),
+            },
+            uuid: [0u8; 16],
+            wlan_channel_list: 0,
+            bytes_received: 0,
+            language: ['e', 'n'],
+            capabilities: self.caps.to_string(),
+        };
+
+        let (rx, mut tx) = framing::make_frames(cx, SlimCodec)?;
+        tx.send(helo)?;
+        Ok((rx, tx))
+    }
+}
 
 /// A type that describes all messages that are sent from the client to
 /// the server.
@@ -106,6 +172,7 @@ pub enum TransType {
 }
 
 bitflags! {
+    #[derive(Debug, PartialEq)]
     pub struct StreamFlags: u8 {
         const INF_LOOP = 0b1000_0000;
         const NO_RESTART_DECODER = 0b0100_0000;
@@ -139,7 +206,7 @@ pub enum ServerMessage {
         replay_gain: f64,
         server_port: u16,
         server_ip: Ipv4Addr,
-        http_headers: Option<RequestHeader>,
+        http_headers: Option<Header>,
     },
     Gain(f64, f64),
     Enable(bool, bool),
@@ -152,105 +219,4 @@ pub enum ServerMessage {
     Skip(u32),
     Unrecognised(String),
     Error,
-}
-
-/// The Slim Protocol struct is used to provide `Stream` and `Sink` objects
-/// for communicating with the server.
-///
-/// Normal procedure is to:
-/// 1. Create the struct
-/// 2. Add capabilities
-/// 3. Connect to the server
-///
-/// e.g.
-///
-/// ```rust
-/// let mut proto = SlimProto::new();
-/// proto
-///    .add_capability(Capability::Modelname("Example".to_owned()))
-///    .add_capability(Capability::Model("Example".to_owned()));
-/// (mut proto_stream, mut proto_sink, server_address) = proto.connect().await.unwrap()
-/// ```
-///
-#[derive(Default)]
-pub struct SlimProto {
-    pub(crate) capabilities: Capabilities,
-}
-
-impl SlimProto {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Add a new capability to be sent ot the server. Note that capabilities are sent to the server
-    /// in the order that they are added to the list. They are sent during the `connect` operation.
-    pub fn add_capability<'a>(&'a mut self, newcap: Capability) -> &'a mut Self {
-        self.capabilities.add(newcap);
-        self
-    }
-
-    /// Use autodiscover to find the server, connect to it and send the list of capabilities.
-    /// Returns a `Stream` object that streams `ServerMessage`, a `Sink` object that accepts
-    /// `ClientMessage` and the IPv4 address of the server.
-    pub async fn connect(
-        self,
-    ) -> io::Result<(
-        Pin<Box<dyn Stream<Item = io::Result<ServerMessage>>>>,
-        Pin<Box<dyn Sink<ClientMessage, Error = io::Error>>>,
-        Ipv4Addr,
-    )> {
-        let (server_addr, _server_tlvs) = discover(None).await?.unwrap(); //safe unwrap with no timeout
-        let (proto_stream, proto_sink) = self.connect_to(&server_addr).await?;
-
-        Ok((proto_stream, proto_sink, server_addr))
-    }
-
-    /// Connect to the server at the given address and send the list of capabilities.
-    /// Returns a `Stream` object that streams `ServerMessage` and a `Sink` object that accepts
-    /// `ClientMessage`.
-    pub async fn connect_to(
-        self,
-        addr: &Ipv4Addr,
-    ) -> io::Result<(
-        Pin<Box<dyn Stream<Item = io::Result<ServerMessage>>>>,
-        Pin<Box<dyn Sink<ClientMessage, Error = io::Error>>>,
-    )> {
-        const SLIM_PORT: u16 = 3483;
-        const READBUFSIZE: usize = 1024;
-
-        let (server_rx, server_tx) = TcpStream::connect((*addr, SLIM_PORT)).await?.into_split();
-        let read_frames = FramedRead::with_capacity(server_rx, SlimCodec, READBUFSIZE);
-        let mut write_frames = FramedWrite::new(server_tx, SlimCodec);
-
-        let helo = ClientMessage::Helo {
-            device_id: 12,
-            revision: 0,
-            mac: match get_mac_address() {
-                Ok(Some(mac)) => mac,
-                _ => MacAddress::new([1, 2, 3, 4, 5, 6]),
-            },
-            uuid: [0u8; 16],
-            wlan_channel_list: 0,
-            bytes_received: 0,
-            language: ['e', 'n'],
-            capabilities: self.capabilities.to_string(),
-        };
-        write_frames.send(helo).await?;
-
-        Ok((Box::pin(read_frames), Box::pin(write_frames)))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn buildproto() {
-        let mut p = SlimProto::new();
-        p.add_capability(Capability::Mp3);
-        p.add_capability(Capability::Model("test".to_owned()))
-            .add_capability(Capability::Ogg);
-        assert_eq!(p.capabilities.to_string(), "mp3,Model=test,ogg");
-    }
 }
