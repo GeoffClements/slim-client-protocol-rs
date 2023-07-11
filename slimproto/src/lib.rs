@@ -24,10 +24,10 @@
 pub mod capability;
 pub(crate) mod codec;
 pub mod discovery;
-pub(crate) mod framing;
 pub mod proto;
 pub mod status;
 
 pub use capability::{Capabilities, Capability};
 pub use proto::{ClientMessage, ServerMessage};
+pub use framous::*;
 // pub use status::{StatusCode, StatusData};

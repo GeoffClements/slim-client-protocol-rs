@@ -20,7 +20,7 @@
 use slimproto::{
     discovery::discover,
     status::{StatusCode, StatusData},
-    Capabilities, ClientMessage, ServerMessage,
+    Capabilities, ClientMessage, ServerMessage, FramedReader, FramedWriter,
 };
 
 use std::time::Duration;
@@ -40,12 +40,12 @@ fn main() {
         let mut status = StatusData::new(0, 0);
 
         // React to messages from the server
-        while let Ok(msg) = rx.recv() {
+        while let Ok(msg) = rx.framed_read() {
             println!("{:?}", msg);
             match msg {
                 // Server wants to know our name
                 ServerMessage::Queryname => tx
-                    .send(ClientMessage::Name(String::from(&client_name)))
+                    .framed_write(ClientMessage::Name(String::from(&client_name)))
                     .unwrap(),
                 // Server wants to set our name
                 ServerMessage::Setname(name) => {
@@ -55,7 +55,7 @@ fn main() {
                 ServerMessage::Status(ts) => {
                     status.set_timestamp(ts);
                     let msg = status.make_status_message(StatusCode::Timer);
-                    tx.send(msg).unwrap();
+                    tx.framed_write(msg).unwrap();
                 }
                 _ => {}
             }

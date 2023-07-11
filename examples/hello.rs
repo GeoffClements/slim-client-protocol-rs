@@ -14,7 +14,7 @@
  responding to any of the status messages so we use a timeout
  to quit.
 */
-use slimproto::{discovery::discover, Capabilities};
+use slimproto::{discovery::discover, Capabilities, FramedReader};
 use std::time::Duration;
 
 fn main() {
@@ -30,7 +30,7 @@ fn main() {
             let (mut rx, _tx) = server.prepare(caps).connect().unwrap();
 
             // Print messages as we receive them
-            while let Ok(msg) = rx.recv() {
+            while let Ok(msg) = rx.framed_read() {
                 println!("{:?}", msg);
             }
         }

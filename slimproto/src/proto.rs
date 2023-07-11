@@ -4,22 +4,16 @@
 // //! are sent to and received from the server.
 
 use bitflags::bitflags;
+use framous::{FramedRead, FramedWrite, FramedWriter};
 use http_tiny::Header;
 use mac_address::{get_mac_address, MacAddress};
-
 pub const SLIM_PORT: u16 = 3483;
 
-use crate::{
-    codec::SlimCodec,
-    framing,
-    framing::{FramedRead, FramedWrite},
-    status::StatusData,
-    Capabilities, Capability,
-};
+use crate::{codec::SlimCodec, status::StatusData, Capabilities, Capability};
 
 use std::{
     collections::HashMap,
-    io::{self, Read, Write},
+    io,
     net::{Ipv4Addr, TcpStream},
     time::Duration,
 };
@@ -82,7 +76,10 @@ impl Server {
         if let Some(sgid) = &self.sync_group_id {
             caps.add(Capability::Syncgroupid(sgid.to_owned()));
         }
-        PreparedServer { server: self.clone(), caps }
+        PreparedServer {
+            server: self.clone(),
+            caps,
+        }
     }
 }
 
@@ -90,10 +87,9 @@ impl PreparedServer {
     pub fn connect(
         self,
     ) -> io::Result<(
-        FramedRead<SlimCodec, impl Read>,
-        FramedWrite<SlimCodec, impl Write>,
+        FramedRead<TcpStream, SlimCodec>,
+        FramedWrite<TcpStream, SlimCodec>,
     )> {
-        const SLIM_PORT: u16 = 3483;
         let cx = TcpStream::connect((self.server.ip_address, SLIM_PORT))?;
 
         let helo = ClientMessage::Helo {
@@ -110,8 +106,12 @@ impl PreparedServer {
             capabilities: self.caps.to_string(),
         };
 
-        let (rx, mut tx) = framing::make_frames(cx, SlimCodec)?;
-        tx.send(helo)?;
+        // let (rx, mut tx) = framing::make_frames(cx, SlimCodec, SlimCodec)?;
+        // tx.send(helo)?;
+        let rx = FramedRead::new(cx.try_clone()?, SlimCodec);
+        let mut tx = FramedWrite::new(cx, SlimCodec);
+
+        tx.framed_write(helo)?;
         Ok((rx, tx))
     }
 }

@@ -3,9 +3,9 @@ use bytes::{Buf, BufMut, BytesMut};
 // use bytes::{buf::BufMut, Buf, BytesMut};
 use http_tiny::{Header, Limiter};
 // use tokio_util::codec::{Decoder, Encoder};
+use framous::{self, Decoder, Encoder};
 
 use crate::{
-    framing::{Decoder, Encoder},
     proto::{
         AutoStart, Format, PcmChannels, PcmEndian, PcmSampleRate, PcmSampleSize, SpdifEnable,
         StreamFlags, TransType,
@@ -15,13 +15,12 @@ use crate::{
 
 use std::{convert::TryInto, io, net::Ipv4Addr, time::Duration};
 
-#[derive(Clone)]
 pub struct SlimCodec;
 
-impl Encoder for SlimCodec {
-    type Item = ClientMessage;
+impl Encoder<ClientMessage> for SlimCodec {
+    type Error = io::Error;
 
-    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> io::Result<()> {
+    fn encode(&mut self, item: ClientMessage, dst: &mut BytesMut) -> io::Result<()> {
         dst.extend(BytesMut::from(item));
         Ok(())
     }
@@ -29,6 +28,7 @@ impl Encoder for SlimCodec {
 
 impl Decoder for SlimCodec {
     type Item = ServerMessage;
+    type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<ServerMessage>> {
         if buf.len() <= 2 {
@@ -145,7 +145,7 @@ impl From<BytesMut> for ServerMessage {
         const GAIN_FACTOR: f64 = 65536.0;
 
         let msg = String::from_utf8(src.split_to(4).to_vec()).unwrap_or_default();
-        let mut buf = src;//.split();
+        let mut buf = src; //.split();
 
         match msg.as_str() {
             "serv" => {
@@ -372,17 +372,14 @@ impl From<BytesMut> for ServerMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        framing::{FramedRead, FramedWrite},
-        status::StatusData,
-    };
-    use mac_address::MacAddress;
-    use std::io::Cursor;
+    use crate::status::StatusData;
+    use framous::{FramedRead, FramedReader, FramedWrite, FramedWriter};
 
-    fn do_send(buf: &mut [u8], frame: ClientMessage) {
-        let buf = Cursor::new(&mut buf[..]);
-        let mut framed = FramedWrite::new(buf, SlimCodec);
-        framed.send(frame).unwrap();
+    use mac_address::MacAddress;
+
+    fn do_send(mut buf: &mut [u8], frame: ClientMessage) {
+        let mut framed = FramedWrite::new(&mut buf, SlimCodec);
+        framed.framed_write(frame).unwrap();
     }
 
     #[test]
@@ -486,7 +483,7 @@ mod tests {
         if let Ok(ServerMessage::Serv {
             ip_address,
             sync_group_id,
-        }) = framed.recv()
+        }) = framed.framed_read()
         {
             assert_eq!(ip_address, Ipv4Addr::new(172, 16, 1, 2));
             assert_eq!(sync_group_id, Some("sync".to_owned()));
@@ -502,7 +499,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Status(d)) = framed.recv() {
+        if let Ok(ServerMessage::Status(d)) = framed.framed_read() {
             assert_eq!(d, Duration::from_millis(252711186));
         } else {
             panic!("STRMt message not received");
@@ -516,7 +513,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Stop) = framed.recv() {
+        if let Ok(ServerMessage::Stop) = framed.framed_read() {
         } else {
             panic!("STRMq message not received");
         }
@@ -529,7 +526,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Pause(p)) = framed.recv() {
+        if let Ok(ServerMessage::Pause(p)) = framed.framed_read() {
             assert_eq!(p, 252711186);
         } else {
             panic!("STRMp message not received");
@@ -543,7 +540,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Unpause(p)) = framed.recv() {
+        if let Ok(ServerMessage::Unpause(p)) = framed.framed_read() {
             assert_eq!(p, 252711186);
         } else {
             panic!("STRMu message not received");
@@ -557,7 +554,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Skip(p)) = framed.recv() {
+        if let Ok(ServerMessage::Skip(p)) = framed.framed_read() {
             assert_eq!(p, 252711186);
         } else {
             panic!("STRMa message not received");
@@ -571,7 +568,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Unrecognised(s)) = framed.recv() {
+        if let Ok(ServerMessage::Unrecognised(s)) = framed.framed_read() {
             assert_eq!(s, "strm_x".to_owned());
         } else {
             panic!("STRMx message not received");
@@ -582,7 +579,7 @@ mod tests {
     fn recv_enable() {
         let buf = [0u8, 6, b'a', b'u', b'd', b'e', 0, 1];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Enable(a, b)) = framed.recv() {
+        if let Ok(ServerMessage::Enable(a, b)) = framed.framed_read() {
             assert_eq!((a, b), (false, true));
         } else {
             panic!("AUDE message not received");
@@ -595,7 +592,7 @@ mod tests {
             0u8, 22, b'a', b'u', b'd', b'g', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 128, 0,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(msg) = framed.recv() {
+        if let Ok(msg) = framed.framed_read() {
             match msg {
                 ServerMessage::Gain(left, right) => {
                     assert_eq!(left, 1.0);
@@ -614,7 +611,7 @@ mod tests {
             0u8, 13, b's', b'e', b't', b'd', 0, b'n', b'e', b'w', b'n', b'a', b'm', b'e', 0,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(msg) = framed.recv() {
+        if let Ok(msg) = framed.framed_read() {
             match msg {
                 ServerMessage::Setname(name) => {
                     assert_eq!(name, "newname".to_owned());
@@ -630,7 +627,7 @@ mod tests {
     fn recv_queryname() {
         let buf = [0u8, 5, b's', b'e', b't', b'd', 0];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Queryname) = framed.recv() {
+        if let Ok(ServerMessage::Queryname) = framed.framed_read() {
         } else {
             panic!("SETD message not received");
         }
@@ -640,7 +637,7 @@ mod tests {
     fn recv_disabledac() {
         let buf = [0u8, 5, b's', b'e', b't', b'd', 4];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::DisableDac) = framed.recv() {
+        if let Ok(ServerMessage::DisableDac) = framed.framed_read() {
         } else {
             panic!("SETD message not received");
         }
@@ -673,7 +670,7 @@ mod tests {
             server_port,
             server_ip,
             http_headers,
-        }) = framed.recv()
+        }) = framed.framed_read()
         {
             if let AutoStart::Auto = autostart {
             } else {
