@@ -1,7 +1,7 @@
-// //! Contains the protocol object with which we interact with the server.
-// //!
-// //! This module also holds the `ClientMessage` and `ServerMessage` types that
-// //! are sent to and received from the server.
+//! Contains the Server type with which we connect to the server.
+//!
+//! This module also holds the `ClientMessage` and `ServerMessage` types that
+//! are sent to and received from the server.
 
 use bitflags::bitflags;
 use framous::{FramedRead, FramedWrite, FramedWriter};
@@ -39,7 +39,7 @@ pub struct Server {
     pub sync_group_id: Option<String>,
 }
 
-/// Allow to clone the server
+/// Allow to clone the server.
 /// We'll lose the TLV map but it's not needed for connecting to the server
 impl Clone for Server {
     fn clone(&self) -> Self {
@@ -52,7 +52,7 @@ impl Clone for Server {
     }
 }
 
-// Useful for conversions from a Serv message
+/// Useful for conversions from a Serv message
 impl From<(Ipv4Addr, Option<String>)> for Server {
     fn from(value: (Ipv4Addr, Option<String>)) -> Self {
         Self {

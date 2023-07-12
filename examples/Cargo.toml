@@ -10,9 +10,9 @@ path = 'hello.rs'
 name = 'keep_alive'
 path = 'keep_alive.rs'
 
-# [[example]]
-# name = 'player'
-# path = 'player.rs'
+[[example]]
+name = 'player'
+path = 'player.rs'
 
 [package]
 edition = '2021'
