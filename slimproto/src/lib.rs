@@ -1,11 +1,10 @@
 //! Slim Protocol for Rust Clients
 //!
-//! This library simplifies communicating with a [Logitech Media Server, aka LMS, aka Slim Server][lms]
-//! by providing suitable asynchronous objects.
+//! This library simplifies communicating with a [Logitech Media Server, aka LMS, aka Slim Server][lms].
 //!
-//! Primarily, communicating with the server is done by instantiating asynchronous `Stream` and `Sink`
-//! objects and then reading from and writing to them. Creating these protocol objects is done with
-//! [SlimProto][slimproto].
+//! Primarily, communicating with the server is done by instantiating a `Server` object, connecting to
+//! the LMS server and then reading from and writing to supplied connection objects.
+//! See [SlimProto][slimproto].
 //!
 //! This library also provides a [discover][discover] function to enable auto-discovery of LMS
 //! servers on the network and a [StatusData][statusdata] struct to simplify the creation of the

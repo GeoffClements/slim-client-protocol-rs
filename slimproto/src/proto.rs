@@ -13,7 +13,7 @@ use crate::{codec::SlimCodec, status::StatusData, Capabilities, Capability};
 
 use std::{
     collections::HashMap,
-    io,
+    io::{self, BufReader, BufWriter},
     net::{Ipv4Addr, TcpStream},
     time::Duration,
 };
@@ -87,8 +87,8 @@ impl PreparedServer {
     pub fn connect(
         self,
     ) -> io::Result<(
-        FramedRead<TcpStream, SlimCodec>,
-        FramedWrite<TcpStream, SlimCodec>,
+        FramedRead<BufReader<TcpStream>, SlimCodec>,
+        FramedWrite<BufWriter<TcpStream>, SlimCodec>,
     )> {
         let cx = TcpStream::connect((self.server.ip_address, SLIM_PORT))?;
 
@@ -108,8 +108,8 @@ impl PreparedServer {
 
         // let (rx, mut tx) = framing::make_frames(cx, SlimCodec, SlimCodec)?;
         // tx.send(helo)?;
-        let rx = FramedRead::new(cx.try_clone()?, SlimCodec);
-        let mut tx = FramedWrite::new(cx, SlimCodec);
+        let rx = FramedRead::new(BufReader::new(cx.try_clone()?), SlimCodec);
+        let mut tx = FramedWrite::new(BufWriter::new(cx), SlimCodec);
 
         tx.framed_write(helo)?;
         Ok((rx, tx))

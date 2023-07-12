@@ -13,7 +13,7 @@ version = '0.1.4'
 [dependencies]
 bitflags = "2.3.3"
 bytes = "1.4.0"
-framous = {git = "https://github.com/GeoffClements/framous.git", version = "0.1.0"}
+framous = "0.1.2"
 http_tiny = "1.1.0"
 mac_address = "1.1.5"
 
