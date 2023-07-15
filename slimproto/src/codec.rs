@@ -1,7 +1,6 @@
 use bytes::{Buf, BufMut, BytesMut};
 
 // use bytes::{buf::BufMut, Buf, BytesMut};
-use http_tiny::{Header, Limiter};
 // use tokio_util::codec::{Decoder, Encoder};
 use framous::{self, Decoder, Encoder};
 
@@ -268,7 +267,7 @@ impl From<BytesMut> for ServerMessage {
                         let server_ip = Ipv4Addr::from(buf.split_to(4).get_u32());
 
                         let http_headers = if buf.len() > 0 {
-                            Header::read(&mut Limiter::new(&mut buf.as_ref(), 1024, 1024)).ok()
+                            Some(String::from_utf8_lossy(&buf).to_string())
                         } else {
                             None
                         };

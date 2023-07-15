@@ -5,57 +5,63 @@
 use slimproto::{
     discovery::discover,
     status::{StatusCode, StatusData},
-    Capabilities, ClientMessage, ServerMessage, FramedWriter, FramedReader,
+    Capabilities, ClientMessage, FramedReader, FramedWriter, ServerMessage,
 };
+
+use crossbeam::{channel::unbounded, select};
 
 use std::time::Duration;
 
 fn main() {
-    // Set up the audio server
+    let (slim_tx, slim_rx) = unbounded();
 
     // The slim protocol loop
-    if let Some(mut server) = discover(Some(Duration::from_secs(10))).unwrap() {
-        loop {
-            // Add some capabilities
-            let mut caps = Capabilities::default();
-            caps.add_name("Example");
+    std::thread::spawn(move || {
+        if let Some(mut server) = discover(Some(Duration::from_secs(10))).unwrap() {
+            loop {
+                // Add some capabilities
+                let mut caps = Capabilities::default();
+                caps.add_name("Example");
 
-            // Prepare the server object with the capabilities and then connect
-            let (mut rx, mut tx) = server.prepare(caps).connect().unwrap();
+                // Prepare the server object with the capabilities and then connect
+                let (mut rx, mut tx) = server.prepare(caps).connect().unwrap();
 
-            let mut client_name = String::from("Example_Player");
-
-            // Make the status data so that we can respond to the server ticks
-            let mut status = StatusData::new(0, 0);
-
-            // React to messages from the server
-            while let Ok(msg) = rx.framed_read() {
-                println!("{:?}", msg);
-                match msg {
-                    // Server wants to know our name
-                    ServerMessage::Queryname => tx
-                        .framed_write(ClientMessage::Name(String::from(&client_name)))
-                        .unwrap(),
-                    // Server wants to set our name
-                    ServerMessage::Setname(name) => {
-                        client_name = name;
+                // React to messages from the server
+                while let Ok(msg) = rx.framed_read() {
+                    match msg {
+                        // Request to change to another server
+                        ServerMessage::Serv {
+                            ip_address: ip,
+                            sync_group_id: sgid,
+                        } => {
+                            server = (ip, sgid).into();
+                            break;
+                        }
+                        _ => {
+                            slim_tx.send(msg).ok();
+                        }
                     }
-                    // Status tick from the server, respond with updated status data
-                    ServerMessage::Status(ts) => {
-                        status.set_timestamp(ts);
-                        let msg = status.make_status_message(StatusCode::Timer);
-                        tx.framed_write(msg).unwrap();
-                    }
-                    // Request to change to another server
-                    ServerMessage::Serv {
-                        ip_address: ip,
-                        sync_group_id: sgid,
-                    } => {
-                        server = (ip, sgid).into();
-                        break;
-                    }
-                    _ => {}
                 }
+            }
+        }
+    });
+
+    // Set up the audio server
+    // let main_loop = MainLoop::new().unwrap();
+    // let context = Context::new(&main_loop).unwrap();
+    // let core = context.connect(None).unwrap();
+
+    // Idle waiting for messages
+    loop {
+        select! {
+            recv(slim_rx)-> slim_msg => {
+                if let Ok(msg) = slim_msg {
+                    println!("{:?}", msg);
+                }
+            }
+            default(Duration::from_secs(10)) => {
+                println!("Timed out");
+                break;
             }
         }
     }

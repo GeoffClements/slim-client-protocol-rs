@@ -5,7 +5,6 @@
 
 use bitflags::bitflags;
 use framous::{FramedRead, FramedWrite, FramedWriter};
-use http_tiny::Header;
 use mac_address::{get_mac_address, MacAddress};
 pub const SLIM_PORT: u16 = 3483;
 
@@ -236,7 +235,7 @@ pub enum ServerMessage {
         replay_gain: f64,
         server_port: u16,
         server_ip: Ipv4Addr,
-        http_headers: Option<Header>,
+        http_headers: Option<String>,
     },
     Gain(f64, f64),
     Enable(bool, bool),
