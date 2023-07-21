@@ -1,7 +1,7 @@
-//! Contains the Server type with which we connect to the server.
-//!
-//! This module also holds the `ClientMessage` and `ServerMessage` types that
-//! are sent to and received from the server.
+/// Contains the Server type with which we connect to the server.
+///
+/// This module also holds the `ClientMessage` and `ServerMessage` types that
+/// are sent to and received from the server.
 
 use bitflags::bitflags;
 use framous::{FramedRead, FramedWrite, FramedWriter};

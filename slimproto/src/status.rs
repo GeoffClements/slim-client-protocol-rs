@@ -1,14 +1,17 @@
-//! A convenience module for working with client status data.
-//! 
-//! The Logitech Media Server requires regular status messages from
-//! the client. This module provides convenience types for this.
+/// A convenience module for working with client status data.
+///
+/// The Logitech Media Server requires regular status messages from
+/// the client. This module provides convenience types for this.
 
-use std::{fmt, time::Duration};
+use std::{
+    fmt,
+    time::{Duration, Instant},
+};
 
 use crate::ClientMessage;
 
 /// A struct to hold the status data as required by the server
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct StatusData {
     pub(crate) crlf: u8,
     pub(crate) buffer_size: u32,
@@ -23,6 +26,8 @@ pub struct StatusData {
     pub(crate) elapsed_milliseconds: u32,
     pub(crate) timestamp: Duration,
     pub(crate) error_code: u16,
+    // -- Items below are not sent
+    pub(crate) start: Instant,
 }
 
 impl StatusData {
@@ -84,9 +89,32 @@ impl StatusData {
 
     /// Create a status message for sending to the server
     pub fn make_status_message(&self, msgtype: StatusCode) -> ClientMessage {
+        let mut stat_data = self.clone();
+        stat_data.jiffies = Instant::now() - stat_data.start;
         ClientMessage::Stat {
             event_code: msgtype.to_string(),
-            stat_data: self.clone(),
+            stat_data
+        }
+    }
+}
+
+impl Default for StatusData {
+    fn default() -> Self {
+        Self {
+            crlf: 0,
+            buffer_size: 0,
+            fullness: 0,
+            bytes_received: 0,
+            sig_strength: 0,
+            jiffies: Duration::default(),
+            output_buffer_size: 0,
+            output_buffer_fullness: 0,
+            elapsed_seconds: 0,
+            voltage: 0,
+            elapsed_milliseconds: 0,
+            timestamp: Duration::default(),
+            error_code: 0,
+            start: Instant::now(),
         }
     }
 }

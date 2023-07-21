@@ -60,8 +60,8 @@ impl From<ClientMessage> for BytesMut {
     fn from(src: ClientMessage) -> BytesMut {
         const FRAMESIZE: usize = 1024;
 
-        let mut msg = Vec::with_capacity(FRAMESIZE + 2);
-        let mut frame_size = Vec::with_capacity(2);
+        let mut msg = Vec::with_capacity(FRAMESIZE + 8);
+        let mut frame_size = Vec::with_capacity(4);
         let mut frame = Vec::with_capacity(FRAMESIZE);
 
         match src {
@@ -370,6 +370,8 @@ impl From<BytesMut> for ServerMessage {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
     use crate::status::StatusData;
     use framous::{FramedRead, FramedReader, FramedWrite, FramedWriter};
@@ -435,6 +437,7 @@ mod tests {
             elapsed_milliseconds: 7890,
             timestamp: Duration::from_millis(1234),
             error_code: 5678,
+            start: Instant::now(),
         };
         let stat = ClientMessage::Stat {
             event_code: "STMt".to_owned(),

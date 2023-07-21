@@ -67,6 +67,7 @@ fn main() -> anyhow::Result<()> {
             let slim_tx_out_r = slim_tx_out.clone();
             std::thread::spawn(move || {
                 while let Ok(msg) = slim_tx_out_r.recv() {
+                    // println!("{:?}", msg);
                     if tx.framed_write(msg).is_err() {
                         return;
                     }

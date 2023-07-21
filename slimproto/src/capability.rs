@@ -1,4 +1,4 @@
-//! Provides the types needed to send capability data to the server.
+/// Provides the types needed to send capability data to the server.
 
 use std::fmt;
 

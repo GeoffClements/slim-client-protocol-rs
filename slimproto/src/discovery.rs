@@ -1,5 +1,5 @@
-//! This module provides the `discover` function which "pings" for a server
-//! on the network returning its address if it exists.
+/// This module provides the `discover` function which "pings" for a server
+/// on the network returning its address if it exists.
 
 use crate::proto::{Server, ServerTlv, ServerTlvMap, SLIM_PORT};
 
@@ -36,7 +36,7 @@ pub fn discover(timeout: Option<Duration>) -> io::Result<Option<Server>> {
     let running = Arc::new(AtomicBool::new(true));
     let is_running = running.clone();
     spawn(move || {
-        let buf = b"eNAME\0IPAD\0JSON\0VERS\0";
+        let buf = b"eNAME\0IPAD\0JSON\0VERS"; // Also \0UUID\0JVID
         while is_running.load(Ordering::Relaxed) {
             cx_send
                 .send_to(buf, (Ipv4Addr::new(255, 255, 255, 255), SLIM_PORT))
