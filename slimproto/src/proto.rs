@@ -105,8 +105,6 @@ impl PreparedServer {
             capabilities: self.caps.to_string(),
         };
 
-        // let (rx, mut tx) = framing::make_frames(cx, SlimCodec, SlimCodec)?;
-        // tx.send(helo)?;
         let rx = FramedRead::new(BufReader::new(cx.try_clone()?), SlimCodec);
         let mut tx = FramedWrite::new(BufWriter::new(cx), SlimCodec);
 

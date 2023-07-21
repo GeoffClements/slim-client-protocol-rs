@@ -37,7 +37,7 @@ fn main() {
         let mut client_name = String::from("BoringExample");
 
         // Make the status data so that we can respond to the server ticks
-        let mut status = StatusData::new(0, 0);
+        let mut status = StatusData::default();
 
         // React to messages from the server
         while let Ok(msg) = rx.framed_read() {

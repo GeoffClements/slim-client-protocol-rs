@@ -26,60 +26,61 @@ pub struct StatusData {
 }
 
 impl StatusData {
-    pub fn new(buffer_size: u32, output_buffer_size: u32) -> Self {
-        let mut stat = StatusData::default();
-        stat.buffer_size = buffer_size;
-        stat.output_buffer_size = output_buffer_size;
-        stat
-    }
+    // pub fn new(buffer_size: u32, output_buffer_size: u32) -> Self {
+    //     let mut stat = StatusData::default();
+    //     stat.buffer_size = buffer_size;
+    //     stat.output_buffer_size = output_buffer_size;
+    //     stat
+    // }
 
-    pub fn set_crlf<'a>(&'a mut self, crlf: u8) -> &'a mut Self {
-        self.crlf = crlf;
-        self
-    }
+    // pub fn set_crlf<'a>(&'a mut self, crlf: u8) -> &'a mut Self {
+    //     self.crlf = crlf;
+    //     self
+    // }
 
-    pub fn set_fullness<'a>(&'a mut self, fullness: u32) -> &'a mut Self {
+    pub fn set_fullness(&mut self, fullness: u32) {
         self.fullness = fullness;
-        self
     }
 
-    pub fn add_bytes_received<'a>(&'a mut self, bytes_received: u64) -> &'a mut Self {
+    pub fn add_bytes_received(&mut self, bytes_received: u64) {
         self.bytes_received = self.bytes_received.wrapping_add(bytes_received);
-        self
     }
 
-    pub fn set_jiffies<'a>(&'a mut self, jiffies: Duration) -> &'a mut Self {
-        self.jiffies = jiffies;
-        self
+    // pub fn set_jiffies<'a>(&'a mut self, jiffies: Duration) -> &'a mut Self {
+    //     self.jiffies = jiffies;
+    //     self
+    // }
+
+    // pub fn set_output_buffer_fullness<'a>(
+    //     &'a mut self,
+    //     output_buffer_fullness: u32,
+    // ) -> &'a mut Self {
+    //     self.output_buffer_fullness = output_buffer_fullness;
+    //     self
+    // }
+
+    // pub fn set_elapsed_seconds<'a>(&'a mut self, elapsed_seconds: u32) -> &'a mut Self {
+    //     self.elapsed_seconds = elapsed_seconds;
+    //     self
+    // }
+
+    // pub fn set_elapsed_milli_seconds<'a>(&'a mut self, elapsed_milli_seconds: u32) -> &'a mut Self {
+    //     self.elapsed_milliseconds = elapsed_milli_seconds;
+    //     self
+    // }
+
+    pub fn set_buffer_size(&mut self, size: u32) {
+        self.buffer_size = size;
     }
 
-    pub fn set_output_buffer_fullness<'a>(
-        &'a mut self,
-        output_buffer_fullness: u32,
-    ) -> &'a mut Self {
-        self.output_buffer_fullness = output_buffer_fullness;
-        self
-    }
-
-    pub fn set_elapsed_seconds<'a>(&'a mut self, elapsed_seconds: u32) -> &'a mut Self {
-        self.elapsed_seconds = elapsed_seconds;
-        self
-    }
-
-    pub fn set_elapsed_milli_seconds<'a>(&'a mut self, elapsed_milli_seconds: u32) -> &'a mut Self {
-        self.elapsed_milliseconds = elapsed_milli_seconds;
-        self
-    }
-
-    pub fn set_timestamp<'a>(&'a mut self, timestamp: Duration) -> &'a mut Self {
+    pub fn set_timestamp(&mut self, timestamp: Duration) {
         self.timestamp = timestamp;
-        self
     }
 
-    pub fn set_error_code<'a>(&'a mut self, error_code: u16) -> &'a mut Self {
-        self.error_code = error_code;
-        self
-    }
+    // pub fn set_error_code<'a>(&'a mut self, error_code: u16) -> &'a mut Self {
+    //     self.error_code = error_code;
+    //     self
+    // }
 
     /// Create a status message for sending to the server
     pub fn make_status_message(&self, msgtype: StatusCode) -> ClientMessage {
@@ -98,6 +99,7 @@ pub enum StatusCode {
     Flushed,
     HeadersReceived,
     BufferThreshold,
+    NotSupported,
     OutputUnderrun,
     Pause,
     Resume,
@@ -115,6 +117,7 @@ impl fmt::Display for StatusCode {
             StatusCode::Flushed => write!(f, "STMf"),
             StatusCode::HeadersReceived => write!(f, "STMh"),
             StatusCode::BufferThreshold => write!(f, "STMl"),
+            StatusCode::NotSupported => write!(f, "STMn"),
             StatusCode::OutputUnderrun => write!(f, "STMo"),
             StatusCode::Pause => write!(f, "STMp"),
             StatusCode::Resume => write!(f, "STMr"),
