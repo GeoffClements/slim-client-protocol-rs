@@ -38,10 +38,9 @@ impl StatusData {
     //     stat
     // }
 
-    // pub fn set_crlf<'a>(&'a mut self, crlf: u8) -> &'a mut Self {
-    //     self.crlf = crlf;
-    //     self
-    // }
+    pub fn add_crlf(&mut self, num_crlf: u8) {
+        self.crlf = self.crlf.wrapping_add(num_crlf);
+    }
 
     pub fn set_fullness(&mut self, fullness: u32) {
         self.fullness = fullness;

@@ -2,7 +2,6 @@
 ///
 /// This module also holds the `ClientMessage` and `ServerMessage` types that
 /// are sent to and received from the server.
-
 use bitflags::bitflags;
 use framous::{FramedRead, FramedWrite, FramedWriter};
 use mac_address::{get_mac_address, MacAddress};
@@ -59,6 +58,17 @@ impl From<(Ipv4Addr, Option<String>)> for Server {
             port: SLIM_PORT,
             tlv_map: HashMap::new(),
             sync_group_id: value.1,
+        }
+    }
+}
+
+impl Default for Server {
+    fn default() -> Self {
+        Self {
+            ip_address: [0, 0, 0, 0].into(),
+            port: 9000,
+            tlv_map: HashMap::new(),
+            sync_group_id: None,
         }
     }
 }
