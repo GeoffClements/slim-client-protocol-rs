@@ -23,5 +23,6 @@ version = '0.0.1'
 [dependencies]
 anyhow = "1.0.71"
 crossbeam = "0.8.2"
+libpulse-binding = "2.28.1"
 slimproto = { path = '../slimproto', version = '*' }
 symphonia = { version = "0.5.3", features = ["aac", "mp3"] }
