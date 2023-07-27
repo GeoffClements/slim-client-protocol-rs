@@ -90,7 +90,7 @@ fn main() -> anyhow::Result<()> {
             let slim_tx_out_r = slim_tx_out.clone();
             std::thread::spawn(move || {
                 while let Ok(msg) = slim_tx_out_r.recv() {
-                    // println!("{:?}", msg);
+                    println!("{:?}", msg);
                     if tx.framed_write(msg).is_err() {
                         return;
                     }
@@ -391,6 +391,7 @@ fn play_stream(
     let mut audio_buf = Vec::new();
 
     // Add callback to pa_stream to feed music
+    let status_ref = status.clone();
     ml.borrow_mut().lock();
     {
         let sm_ref = pa_stream.clone();
@@ -421,9 +422,21 @@ fn play_stream(
                     audio_buf.extend_from_slice(raw_buf.as_bytes());
                 }
 
+                // Check for end of playback
                 if audio_buf.len() < len {
+                    let sm_ref = sm_ref.clone();
+                    let status = status.clone();
+                    let slim_tx = slim_tx.clone();
                     unsafe {
-                        (*sm_ref.as_ptr()).drain(None);
+                        (*sm_ref.as_ptr()).drain(Some(Box::new(move |success| {
+                            if success {
+                                (*sm_ref.as_ptr()).disconnect().ok();
+                                if let Ok(status) = status.read() {
+                                    let msg = status.make_status_message(StatusCode::Underrun);
+                                    slim_tx.send(msg).ok();
+                                }
+                            }
+                        })));
                     }
                     return;
                 }
@@ -437,6 +450,16 @@ fn play_stream(
                         )
                         .ok()
                 };
+
+                unsafe {
+                    (*sm_ref.as_ptr()).update_timing_info(None);
+                }
+                if let Ok(Some(stream_time)) = unsafe { (*sm_ref.as_ptr()).get_time() } {
+                    if let Ok(mut status) = status_ref.write() {
+                        status.set_elapsed_milli_seconds(stream_time.as_millis() as u32);
+                        status.set_elapsed_seconds(stream_time.as_secs() as u32);
+                    };
+                }
             })));
     }
 

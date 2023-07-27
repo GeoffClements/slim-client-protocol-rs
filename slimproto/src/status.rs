@@ -63,15 +63,13 @@ impl StatusData {
     //     self
     // }
 
-    // pub fn set_elapsed_seconds<'a>(&'a mut self, elapsed_seconds: u32) -> &'a mut Self {
-    //     self.elapsed_seconds = elapsed_seconds;
-    //     self
-    // }
+    pub fn set_elapsed_seconds(&mut self, elapsed_seconds: u32) {
+        self.elapsed_seconds = elapsed_seconds;
+    }
 
-    // pub fn set_elapsed_milli_seconds<'a>(&'a mut self, elapsed_milli_seconds: u32) -> &'a mut Self {
-    //     self.elapsed_milliseconds = elapsed_milli_seconds;
-    //     self
-    // }
+    pub fn set_elapsed_milli_seconds(&mut self, elapsed_milli_seconds: u32) {
+        self.elapsed_milliseconds = elapsed_milli_seconds;
+    }
 
     pub fn set_buffer_size(&mut self, size: u32) {
         self.buffer_size = size;
