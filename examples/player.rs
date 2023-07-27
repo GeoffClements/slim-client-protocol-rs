@@ -6,18 +6,21 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use libpulse_binding::{self as pa, context::Context, stream::Stream};
-use pa::sample::Spec;
+use libpulse_binding as pa;
+use pa::{context::Context, mainloop::threaded::Mainloop, sample::Spec, stream::Stream};
+
 use slimproto::{
     buffer::SlimBuffer,
     discovery::discover,
-    proto::{PcmChannels, PcmEndian, PcmSampleRate, PcmSampleSize, Server},
+    proto::{PcmChannels, PcmSampleRate, Server},
     status::{StatusCode, StatusData},
     Capabilities, Capability, ClientMessage, FramedReader, FramedWriter, ServerMessage,
 };
 
 use crossbeam::channel::Sender;
 use symphonia::core::{
+    audio::RawSampleBuffer,
+    codecs::DecoderOptions,
     formats::FormatOptions,
     io::{MediaSourceStream, ReadOnlySource},
     meta::MetadataOptions,
@@ -29,6 +32,7 @@ fn main() -> anyhow::Result<()> {
     // We need control of the output with stop and pause etc.,
     // so we have to use the threaded version
     let (ml, cx) = pulse::setup()?;
+    let mut stream = None;
 
     // Set up variables needed by the Slim protocol
     let mut server = Server::default();
@@ -152,10 +156,10 @@ fn main() -> anyhow::Result<()> {
             ServerMessage::Stream {
                 // autostart,
                 format,
-                pcmsamplesize,
+                // pcmsamplesize,
                 pcmsamplerate,
                 pcmchannels,
-                pcmendian,
+                // pcmendian,
                 threshold,
                 // spdif_enable,
                 // trans_period,
@@ -176,15 +180,15 @@ fn main() -> anyhow::Result<()> {
                             status.add_crlf(num_crlf as u8);
                         }
 
-                        play_stream(
+                        let new_stream = play_stream(
                             slim_tx_in.clone(),
                             status.clone(),
                             //     autostart,
                             format,
-                            pcmsamplesize,
+                            // pcmsamplesize,
                             pcmsamplerate,
                             pcmchannels,
-                            pcmendian,
+                            // pcmendian,
                             threshold,
                             //     spdif_enable,
                             //     trans_period,
@@ -196,8 +200,11 @@ fn main() -> anyhow::Result<()> {
                             server_ip,
                             http_headers,
                             &server,
+                            ml.clone(),
                             cx.clone(),
-                        )?
+                        )?;
+
+                        stream = new_stream;
                     }
                 }
             }
@@ -213,10 +220,10 @@ fn play_stream(
     status: Arc<RwLock<StatusData>>,
     // autostart: slimproto::proto::AutoStart,
     format: slimproto::proto::Format,
-    pcmsamplesize: slimproto::proto::PcmSampleSize,
+    // pcmsamplesize: slimproto::proto::PcmSampleSize,
     pcmsamplerate: slimproto::proto::PcmSampleRate,
     pcmchannels: slimproto::proto::PcmChannels,
-    pcmendian: slimproto::proto::PcmEndian,
+    // pcmendian: slimproto::proto::PcmEndian,
     threshold: u32,
     // spdif_enable: slimproto::proto::SpdifEnable,
     // trans_period: Duration,
@@ -228,8 +235,9 @@ fn play_stream(
     server_ip: Ipv4Addr,
     http_headers: String,
     server: &Server,
+    ml: Rc<RefCell<Mainloop>>,
     cx: Rc<RefCell<Context>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<Rc<RefCell<Stream>>>> {
     // The LMS sends an ip of 0, 0, 0, 0 when it wants us to default to it
     let ip = if server_ip == Ipv4Addr::new(0, 0, 0, 0) {
         server.ip_address
@@ -285,7 +293,7 @@ fn play_stream(
                     let msg = status.make_status_message(StatusCode::NotSupported);
                     slim_tx.send(msg).ok();
                 }
-                return Ok(());
+                return Ok(None);
             }
         };
 
@@ -305,32 +313,36 @@ fn play_stream(
                 let msg = status.make_status_message(StatusCode::NotSupported);
                 slim_tx.send(msg).ok();
             }
-            return Ok(());
+            return Ok(None);
         }
     };
 
     // Set pa sample format
-    let sample_format = match (pcmsamplesize, pcmendian) {
-        (PcmSampleSize::Eight, _) => pa::sample::Format::U8,
-        (PcmSampleSize::Sixteen, PcmEndian::Big) => pa::sample::Format::S16be,
-        (PcmSampleSize::Sixteen, PcmEndian::Little) => pa::sample::Format::S16le,
-        (PcmSampleSize::ThirtyTwo, PcmEndian::Big) => pa::sample::Format::S32be,
-        (PcmSampleSize::ThirtyTwo, PcmEndian::Little) => pa::sample::Format::S32le,
-        (PcmSampleSize::SelfDescribing, _) => {
-            let sample_format = track
-                .codec_params
-                .sample_format
-                .unwrap_or(symphonia::core::sample::SampleFormat::F64);
-            match sample_format {
-                symphonia::core::sample::SampleFormat::U8 => pa::sample::Format::U8,
-                symphonia::core::sample::SampleFormat::S16 => pa::sample::Format::S16NE,
-                symphonia::core::sample::SampleFormat::S32 => pa::sample::Format::S32NE,
-                symphonia::core::sample::SampleFormat::F32 => pa::sample::Format::FLOAT32NE,
-                _ => pa::sample::Format::Invalid,
-            }
-        }
-        _ => pa::sample::Format::Invalid,
-    };
+    // let sample_format = match (pcmsamplesize, pcmendian) {
+    //     (PcmSampleSize::Eight, _) => pa::sample::Format::U8,
+    //     (PcmSampleSize::Sixteen, PcmEndian::Big) => pa::sample::Format::S16be,
+    //     (PcmSampleSize::Sixteen, PcmEndian::Little) => pa::sample::Format::S16le,
+    //     (PcmSampleSize::ThirtyTwo, PcmEndian::Big) => pa::sample::Format::S32be,
+    //     (PcmSampleSize::ThirtyTwo, PcmEndian::Little) => pa::sample::Format::S32le,
+    //     (PcmSampleSize::SelfDescribing, _) => match track.codec_params.sample_format {
+    //         Some(symphonia::core::sample::SampleFormat::U8) => pa::sample::Format::U8,
+    //         Some(symphonia::core::sample::SampleFormat::S16) => pa::sample::Format::S16NE,
+    //         Some(symphonia::core::sample::SampleFormat::S32) => pa::sample::Format::S32NE,
+    //         Some(symphonia::core::sample::SampleFormat::F32) => pa::sample::Format::FLOAT32NE,
+    //         None => {
+    //             match track.codec_params.bits_per_sample {
+    //                 Some(8) => pa::sample::Format::U8,
+    //                 Some(16) => pa::sample::Format::S16NE,
+    //                 Some(32) => pa::sample::Format::S32NE,
+    //                 _ => pa::sample::Format::FLOAT32NE,
+    //             }
+    //         }
+    //         _ => pa::sample::Format::FLOAT32NE,
+    //     },
+    //     _ => pa::sample::Format::FLOAT32NE,
+    // };
+
+    let sample_format = pa::sample::Format::FLOAT32NE;
 
     let sample_rate = match pcmsamplerate {
         PcmSampleRate::Rate(rate) => rate,
@@ -343,7 +355,11 @@ fn play_stream(
         PcmChannels::SelfDescribing => match track.codec_params.channel_layout {
             Some(symphonia::core::audio::Layout::Mono) => 1,
             Some(symphonia::core::audio::Layout::Stereo) => 2,
-            _ => 0,
+            None => match track.codec_params.channels {
+                Some(channels) => channels.count() as u8,
+                _ => 2,
+            },
+            _ => 2,
         },
     };
 
@@ -363,15 +379,72 @@ fn play_stream(
                     let msg = status.make_status_message(StatusCode::NotSupported);
                     slim_tx.send(msg).ok();
                 }
-                return Ok(());
+                return Ok(None);
             }
-        }
+        },
     ));
 
-    // Add callback to pa_stream to feed music
-    
+    // Create a decoder for the track.
+    let mut decoder =
+        symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
 
-    Ok(())
+    let mut audio_buf = Vec::new();
+
+    // Add callback to pa_stream to feed music
+    ml.borrow_mut().lock();
+    {
+        let sm_ref = pa_stream.clone();
+        pa_stream
+            .borrow_mut()
+            .set_write_callback(Some(Box::new(move |len| {
+                while audio_buf.len() < len {
+                    let packet = match probed.format.next_packet() {
+                        Ok(packet) => packet,
+                        Err(_) => {
+                            break;
+                        }
+                    };
+
+                    let decoded = match decoder.decode(&packet) {
+                        Ok(decoded) => decoded,
+                        Err(_) => break,
+                    };
+
+                    if decoded.frames() == 0 {
+                        break;
+                    }
+
+                    let mut raw_buf =
+                        RawSampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+
+                    raw_buf.copy_interleaved_ref(decoded);
+                    audio_buf.extend_from_slice(raw_buf.as_bytes());
+                }
+
+                if audio_buf.len() < len {
+                    unsafe {
+                        (*sm_ref.as_ptr()).drain(None);
+                    }
+                    return;
+                }
+
+                unsafe {
+                    (*sm_ref.as_ptr())
+                        .write_copy(
+                            &audio_buf.drain(..len).collect::<Vec<u8>>(),
+                            0,
+                            pa::stream::SeekMode::Relative,
+                        )
+                        .ok()
+                };
+            })));
+    }
+
+    ml.borrow_mut().unlock();
+
+    pulse::connect_stream(ml, &pa_stream).ok();
+
+    Ok(Some(pa_stream))
 }
 
 mod pulse {
@@ -439,7 +512,10 @@ mod pulse {
         Ok((ml, cx))
     }
 
-    pub fn connect_stream(ml: Rc<RefCell<Mainloop>>, sm: Rc<RefCell<Stream>>) -> Result<(), PAErr> {
+    pub fn connect_stream(
+        ml: Rc<RefCell<Mainloop>>,
+        sm: &Rc<RefCell<Stream>>,
+    ) -> Result<(), PAErr> {
         ml.borrow_mut().lock();
 
         // Stream state change callback
