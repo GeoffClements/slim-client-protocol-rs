@@ -1,4 +1,5 @@
 use std::{
+    borrow::BorrowMut,
     cell::RefCell,
     io::Write,
     net::{Ipv4Addr, TcpStream},
@@ -32,7 +33,7 @@ fn main() -> anyhow::Result<()> {
     // We need control of the output with stop and pause etc.,
     // so we have to use the threaded version
     let (ml, cx) = pulse::setup()?;
-    let mut stream = None;
+    let mut stream: Option<Rc<RefCell<Stream>>> = None;
 
     // Set up variables needed by the Slim protocol
     let mut server = Server::default();
@@ -145,6 +146,25 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
+            ServerMessage::Flush => {
+                let status_ref = status.clone();
+                if let Some(ref mut sm) = stream {
+                    let slim_tx_in_ref = slim_tx_in.clone();
+                    (*(*sm.borrow_mut())).borrow_mut().flush(None);
+                    if let Ok(status) = status_ref.read() {
+                        let msg = status.make_status_message(StatusCode::Flushed);
+                        slim_tx_in_ref.send(msg).ok();
+                    }
+                }
+            }
+
+            ServerMessage::Stop => {
+                if let Some(ref mut sm) = stream {
+                    (*(*sm.borrow_mut())).borrow_mut().disconnect().ok();
+                    stream = None;
+                }
+            }
+
             ServerMessage::Status(ts) => {
                 if let Ok(mut status) = status.write() {
                     status.set_timestamp(ts);
@@ -153,8 +173,46 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
+            ServerMessage::Pause(dur) => {
+                if let Some(ref mut sm) = stream {
+                    if dur.is_zero() {
+                        let status_ref = status.clone();
+                        let slim_tx_in_ref = slim_tx_in.clone();
+                        (*(*sm.borrow_mut()))
+                            .borrow_mut()
+                            .cork(Some(Box::new(move |success| {
+                                if success {
+                                    if let Ok(status) = status_ref.read() {
+                                        let msg = status.make_status_message(StatusCode::Pause);
+                                        slim_tx_in_ref.send(msg).ok();
+                                    }
+                                }
+                            })));
+                    };
+                }
+            }
+
+            ServerMessage::Unpause(dur) => {
+                if let Some(ref mut sm) = stream {
+                    if dur.is_zero() {
+                        let status_ref = status.clone();
+                        let slim_tx_in_ref = slim_tx_in.clone();
+                        (*(*sm.borrow_mut()))
+                            .borrow_mut()
+                            .uncork(Some(Box::new(move |success| {
+                                if success {
+                                    if let Ok(status) = status_ref.read() {
+                                        let msg = status.make_status_message(StatusCode::Resume);
+                                        slim_tx_in_ref.send(msg).ok();
+                                    }
+                                }
+                            })));
+                    }
+                }
+            }
+
             ServerMessage::Stream {
-                // autostart,
+                autostart,
                 format,
                 // pcmsamplesize,
                 pcmsamplerate,
@@ -183,7 +241,7 @@ fn main() -> anyhow::Result<()> {
                         let new_stream = play_stream(
                             slim_tx_in.clone(),
                             status.clone(),
-                            //     autostart,
+                            autostart,
                             format,
                             // pcmsamplesize,
                             pcmsamplerate,
@@ -218,7 +276,7 @@ fn main() -> anyhow::Result<()> {
 fn play_stream(
     slim_tx: Sender<ClientMessage>,
     status: Arc<RwLock<StatusData>>,
-    // autostart: slimproto::proto::AutoStart,
+    autostart: slimproto::proto::AutoStart,
     format: slimproto::proto::Format,
     // pcmsamplesize: slimproto::proto::PcmSampleSize,
     pcmsamplerate: slimproto::proto::PcmSampleRate,
@@ -317,6 +375,11 @@ fn play_stream(
         }
     };
 
+    if let Ok(status) = status.read() {
+        let msg = status.make_status_message(StatusCode::StreamEstablished);
+        slim_tx.send(msg).ok();
+    }
+
     // Set pa sample format
     // let sample_format = match (pcmsamplesize, pcmendian) {
     //     (PcmSampleSize::Eight, _) => pa::sample::Format::U8,
@@ -372,7 +435,7 @@ fn play_stream(
 
     // Create a pulseaudio stream
     let pa_stream = Rc::new(RefCell::new(
-        match Stream::new(&mut cx.borrow_mut(), "Music", &spec, None) {
+        match Stream::new(&mut (*cx).borrow_mut(), "Music", &spec, None) {
             Some(stream) => stream,
             None => {
                 if let Ok(status) = status.read() {
@@ -384,18 +447,23 @@ fn play_stream(
         },
     ));
 
+    if let Ok(status) = status.read() {
+        let msg = status.make_status_message(StatusCode::TrackStarted);
+        slim_tx.send(msg).ok();
+    }
+
     // Create a decoder for the track.
     let mut decoder =
         symphonia::default::get_codecs().make(&track.codec_params, &DecoderOptions::default())?;
 
-    let mut audio_buf = Vec::new();
+    let mut audio_buf = Vec::with_capacity(8 * 1024);
 
     // Add callback to pa_stream to feed music
     let status_ref = status.clone();
-    ml.borrow_mut().lock();
+    (*ml).borrow_mut().lock();
     {
         let sm_ref = pa_stream.clone();
-        pa_stream
+        (*pa_stream)
             .borrow_mut()
             .set_write_callback(Some(Box::new(move |len| {
                 while audio_buf.len() < len {
@@ -432,7 +500,7 @@ fn play_stream(
                             if success {
                                 (*sm_ref.as_ptr()).disconnect().ok();
                                 if let Ok(status) = status.read() {
-                                    let msg = status.make_status_message(StatusCode::Underrun);
+                                    let msg = status.make_status_message(StatusCode::DecoderReady);
                                     slim_tx.send(msg).ok();
                                 }
                             }
@@ -451,21 +519,20 @@ fn play_stream(
                         .ok()
                 };
 
-                unsafe {
-                    (*sm_ref.as_ptr()).update_timing_info(None);
-                }
                 if let Ok(Some(stream_time)) = unsafe { (*sm_ref.as_ptr()).get_time() } {
                     if let Ok(mut status) = status_ref.write() {
                         status.set_elapsed_milli_seconds(stream_time.as_millis() as u32);
                         status.set_elapsed_seconds(stream_time.as_secs() as u32);
+                        status.set_output_buffer_size(audio_buf.capacity() as u32);
+                        status.set_output_buffer_fullness(audio_buf.len() as u32);
                     };
                 }
             })));
     }
 
-    ml.borrow_mut().unlock();
+    (*ml).borrow_mut().unlock();
 
-    pulse::connect_stream(ml, &pa_stream).ok();
+    pulse::connect_stream(&ml, &pa_stream, autostart).ok();
 
     Ok(Some(pa_stream))
 }
@@ -536,8 +603,9 @@ mod pulse {
     }
 
     pub fn connect_stream(
-        ml: Rc<RefCell<Mainloop>>,
+        ml: &Rc<RefCell<Mainloop>>,
         sm: &Rc<RefCell<Stream>>,
+        autostart: slimproto::proto::AutoStart,
     ) -> Result<(), PAErr> {
         ml.borrow_mut().lock();
 
@@ -558,8 +626,13 @@ mod pulse {
             })));
         }
 
+        let mut flags = SmFlagSet::AUTO_TIMING_UPDATE;
+        if autostart != slimproto::proto::AutoStart::Auto {
+            flags |= SmFlagSet::START_CORKED;
+        }
+
         sm.borrow_mut()
-            .connect_playback(None, None, SmFlagSet::NOFLAGS, None, None)?;
+            .connect_playback(None, None, flags, None, None)?;
 
         // Wait for stream to be ready
         loop {

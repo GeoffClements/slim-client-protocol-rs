@@ -44,7 +44,7 @@ impl fmt::Display for Capability {
             Capability::Model(v) => write!(f, "Model={}", v),
             Capability::Modelname(v) => write!(f, "Modelname={}", v),
             Capability::Rhap => write!(f, "Rhap"),
-            Capability::Accurateplaypoints => write!(f, "AccuratePlayPoints"),
+            Capability::Accurateplaypoints => write!(f, "AccuratePlayPoints=1"),
             Capability::Syncgroupid(v) => write!(f, "SyncgroupID={}", v),
             Capability::Hasdigitalout => write!(f, "HasDigitalOut"),
             Capability::Haspreamp => write!(f, "HasPreAmp"),

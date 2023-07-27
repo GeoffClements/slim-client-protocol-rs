@@ -2,7 +2,6 @@
 ///
 /// The Logitech Media Server requires regular status messages from
 /// the client. This module provides convenience types for this.
-
 use std::{
     fmt,
     time::{Duration, Instant},
@@ -50,18 +49,17 @@ impl StatusData {
         self.bytes_received = self.bytes_received.wrapping_add(bytes_received);
     }
 
-    // pub fn set_jiffies<'a>(&'a mut self, jiffies: Duration) -> &'a mut Self {
-    //     self.jiffies = jiffies;
-    //     self
-    // }
+    pub fn set_jiffies(&mut self, jiffies: Duration) {
+        self.jiffies = jiffies;
+    }
 
-    // pub fn set_output_buffer_fullness<'a>(
-    //     &'a mut self,
-    //     output_buffer_fullness: u32,
-    // ) -> &'a mut Self {
-    //     self.output_buffer_fullness = output_buffer_fullness;
-    //     self
-    // }
+    pub fn set_output_buffer_size(&mut self, output_buffer_size: u32) {
+        self.output_buffer_size = output_buffer_size;
+    }
+
+    pub fn set_output_buffer_fullness(&mut self, output_buffer_fullness: u32) {
+        self.output_buffer_fullness = output_buffer_fullness;
+    }
 
     pub fn set_elapsed_seconds(&mut self, elapsed_seconds: u32) {
         self.elapsed_seconds = elapsed_seconds;
@@ -87,10 +85,10 @@ impl StatusData {
     /// Create a status message for sending to the server
     pub fn make_status_message(&self, msgtype: StatusCode) -> ClientMessage {
         let mut stat_data = self.clone();
-        stat_data.jiffies = Instant::now() - stat_data.start;
+        stat_data.set_jiffies(Instant::now() - stat_data.start);
         ClientMessage::Stat {
             event_code: msgtype.to_string(),
-            stat_data
+            stat_data,
         }
     }
 }

@@ -294,16 +294,18 @@ impl From<BytesMut> for ServerMessage {
 
                     'q' => ServerMessage::Stop,
 
+                    'f' => ServerMessage::Flush,
+
                     'p' => {
-                        let _ = buf.split_to(14);
+                        buf.advance(14);
                         let timestamp = buf.get_u32();
-                        ServerMessage::Pause(timestamp)
+                        ServerMessage::Pause(Duration::from_millis(timestamp as u64))
                     }
 
                     'u' => {
-                        let _ = buf.split_to(14);
+                        buf.advance(14);
                         let timestamp = buf.get_u32();
-                        ServerMessage::Unpause(timestamp)
+                        ServerMessage::Unpause(Duration::from_millis(timestamp as u64))
                     }
 
                     'a' => {
@@ -529,7 +531,7 @@ mod tests {
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
         if let Ok(ServerMessage::Pause(p)) = framed.framed_read() {
-            assert_eq!(p, 252711186);
+            assert_eq!(p, Duration::from_millis(252711186));
         } else {
             panic!("STRMp message not received");
         }
@@ -543,7 +545,7 @@ mod tests {
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
         if let Ok(ServerMessage::Unpause(p)) = framed.framed_read() {
-            assert_eq!(p, 252711186);
+            assert_eq!(p, Duration::from_millis(252711186));
         } else {
             panic!("STRMu message not received");
         }
