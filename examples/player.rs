@@ -1,10 +1,16 @@
+// This is a very basic (but much too complicated) example of a player
+// using slimproto and pulseaudio.
+// It will play music from a LMS so you will need one on your local
+// network to play anything.
+// It has basic functionality such as pause, unpause and volume control.
+
 use std::{
     borrow::BorrowMut,
     cell::RefCell,
     io::Write,
     net::{Ipv4Addr, TcpStream},
     rc::Rc,
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use libpulse_binding as pa;
@@ -20,7 +26,7 @@ use slimproto::{
 
 use crossbeam::channel::Sender;
 use symphonia::core::{
-    audio::RawSampleBuffer,
+    audio::{AsAudioBufferRef, AudioBuffer, RawSampleBuffer, Signal},
     codecs::DecoderOptions,
     formats::FormatOptions,
     io::{MediaSourceStream, ReadOnlySource},
@@ -34,6 +40,7 @@ fn main() -> anyhow::Result<()> {
     // so we have to use the threaded version
     let (ml, cx) = pulse::setup()?;
     let mut stream: Option<Rc<RefCell<Stream>>> = None;
+    let gain = Arc::new(Mutex::new(1.0f32));
 
     // Set up variables needed by the Slim protocol
     let mut server = Server::default();
@@ -91,7 +98,7 @@ fn main() -> anyhow::Result<()> {
             let slim_tx_out_r = slim_tx_out.clone();
             std::thread::spawn(move || {
                 while let Ok(msg) = slim_tx_out_r.recv() {
-                    println!("{:?}", msg);
+                    // println!("{:?}", msg);
                     if tx.framed_write(msg).is_err() {
                         return;
                     }
@@ -126,7 +133,7 @@ fn main() -> anyhow::Result<()> {
 
     // Main thread Slim protocol loop
     while let Ok(msg) = slim_rx_out.recv() {
-        println!("{:?}", msg);
+        // println!("{:?}", msg);
         match msg {
             ServerMessage::Serv { ip_address, .. } => {
                 server = (ip_address, None).into();
@@ -192,6 +199,13 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
+            ServerMessage::Gain(l, r) => {
+                let ave_g = ((l + r) / 2.0) as f32;
+                if let Ok(mut g) = gain.lock() {
+                    *g = ave_g;
+                }
+            }
+
             ServerMessage::Unpause(dur) => {
                 if let Some(ref mut sm) = stream {
                     if dur.is_zero() {
@@ -241,6 +255,7 @@ fn main() -> anyhow::Result<()> {
                         let new_stream = play_stream(
                             slim_tx_in.clone(),
                             status.clone(),
+                            gain.clone(),
                             autostart,
                             format,
                             // pcmsamplesize,
@@ -276,6 +291,7 @@ fn main() -> anyhow::Result<()> {
 fn play_stream(
     slim_tx: Sender<ClientMessage>,
     status: Arc<RwLock<StatusData>>,
+    gain: Arc<Mutex<f32>>,
     autostart: slimproto::proto::AutoStart,
     format: slimproto::proto::Format,
     // pcmsamplesize: slimproto::proto::PcmSampleSize,
@@ -355,15 +371,6 @@ fn play_stream(
             }
         };
 
-    if let Some(mut metadata) = probed.metadata.get() {
-        if let Some(metadata) = metadata.skip_to_latest() {
-            println!("Now playing:");
-            for tag in metadata.tags() {
-                println!("{}: {}", tag.key, tag.value);
-            }
-        }
-    }
-
     let track = match probed.format.default_track() {
         Some(track) => track,
         None => {
@@ -405,6 +412,7 @@ fn play_stream(
     //     _ => pa::sample::Format::FLOAT32NE,
     // };
 
+    // To keep things simple we'll just set pa to F32 and let it transform the data
     let sample_format = pa::sample::Format::FLOAT32NE;
 
     let sample_rate = match pcmsamplerate {
@@ -483,10 +491,18 @@ fn play_stream(
                         break;
                     }
 
+                    // Set the volume
+                    let mut samples_buf =
+                        AudioBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+                    decoded.convert(&mut samples_buf);
+                    if let Ok(gain) = gain.lock() {
+                        samples_buf.transform(|s| *gain * s)
+                    }
+
                     let mut raw_buf =
                         RawSampleBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
 
-                    raw_buf.copy_interleaved_ref(decoded);
+                    raw_buf.copy_interleaved_ref(samples_buf.as_audio_buffer_ref());
                     audio_buf.extend_from_slice(raw_buf.as_bytes());
                 }
 

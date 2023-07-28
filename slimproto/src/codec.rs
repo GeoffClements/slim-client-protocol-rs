@@ -309,7 +309,7 @@ impl From<BytesMut> for ServerMessage {
                     }
 
                     'a' => {
-                        let _ = buf.split_to(14);
+                        buf.advance(14);
                         let timestamp = buf.get_u32();
                         ServerMessage::Skip(timestamp)
                     }
