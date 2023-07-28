@@ -202,7 +202,7 @@ fn main() -> anyhow::Result<()> {
             ServerMessage::Gain(l, r) => {
                 let ave_g = ((l + r) / 2.0) as f32;
                 if let Ok(mut g) = gain.lock() {
-                    *g = ave_g;
+                    *g = ave_g.sqrt();
                 }
             }
 
