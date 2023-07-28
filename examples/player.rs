@@ -26,7 +26,7 @@ use slimproto::{
 
 use crossbeam::channel::Sender;
 use symphonia::core::{
-    audio::{AsAudioBufferRef, AudioBuffer, RawSampleBuffer, Signal},
+    audio::{AsAudioBufferRef, RawSampleBuffer, Signal},
     codecs::DecoderOptions,
     formats::FormatOptions,
     io::{MediaSourceStream, ReadOnlySource},
@@ -492,8 +492,7 @@ fn play_stream(
                     }
 
                     // Set the volume
-                    let mut samples_buf =
-                        AudioBuffer::<f32>::new(decoded.capacity() as u64, *decoded.spec());
+                    let mut samples_buf = decoded.make_equivalent::<f32>();
                     decoded.convert(&mut samples_buf);
                     if let Ok(gain) = gain.lock() {
                         samples_buf.transform(|s| *gain * s)
