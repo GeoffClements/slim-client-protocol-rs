@@ -6,7 +6,7 @@ use crate::proto::{Server, ServerTlv, ServerTlvMap, SLIM_PORT};
 use std::{
     collections::HashMap,
     io,
-    net::{Ipv4Addr, SocketAddr, UdpSocket},
+    net::{Ipv4Addr, SocketAddr, UdpSocket, SocketAddrV4},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -56,13 +56,14 @@ pub fn discover(timeout: Option<Duration>) -> io::Result<Option<Server>> {
         },
         |(len, sock_addr)| match sock_addr {
             SocketAddr::V4(addr) => Ok(Some(Server {
-                ip_address: *addr.ip(),
-                port: SLIM_PORT,
+                socket: SocketAddrV4::new(*addr.ip(), SLIM_PORT),
+                // ip_address: *addr.ip(),
+                // port: SLIM_PORT,
                 tlv_map: {
                     if len > 0 && buf[0] == b'E' {
-                        decode_tlv(&buf[1..])
+                        Some(decode_tlv(&buf[1..]))
                     } else {
-                        HashMap::new()
+                        None
                     }
                 },
                 sync_group_id: None,
@@ -126,8 +127,8 @@ mod tests {
         assert!(res.is_ok());
 
         if let Ok(Some(server)) = res {
-            assert!(!server.ip_address.is_unspecified());
-            assert!(server.tlv_map.len() > 0);
+            assert!(!server.socket.ip().is_unspecified());
+            assert!(server.tlv_map.is_some());
         }
     }
 }

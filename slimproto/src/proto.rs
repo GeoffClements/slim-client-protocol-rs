@@ -12,7 +12,7 @@ use crate::{codec::SlimCodec, status::StatusData, Capabilities, Capability};
 use std::{
     collections::HashMap,
     io::{self, BufReader, BufWriter},
-    net::{Ipv4Addr, TcpStream},
+    net::{Ipv4Addr, SocketAddrV4, TcpStream},
     time::Duration,
 };
 
@@ -31,9 +31,8 @@ pub(crate) type ServerTlvMap = HashMap<String, ServerTlv>;
 
 /// A Server struct to hold the connection details
 pub struct Server {
-    pub ip_address: std::net::Ipv4Addr,
-    pub port: u16,
-    pub tlv_map: ServerTlvMap,
+    pub socket: SocketAddrV4,
+    pub tlv_map: Option<ServerTlvMap>,
     pub sync_group_id: Option<String>,
 }
 
@@ -42,9 +41,8 @@ pub struct Server {
 impl Clone for Server {
     fn clone(&self) -> Self {
         Self {
-            ip_address: self.ip_address,
-            port: self.port,
-            tlv_map: HashMap::new(),
+            socket: self.socket,
+            tlv_map: None,
             sync_group_id: self.sync_group_id.as_ref().map(String::from),
         }
     }
@@ -54,10 +52,19 @@ impl Clone for Server {
 impl From<(Ipv4Addr, Option<String>)> for Server {
     fn from(value: (Ipv4Addr, Option<String>)) -> Self {
         Self {
-            ip_address: value.0,
-            port: SLIM_PORT,
-            tlv_map: HashMap::new(),
+            socket: SocketAddrV4::new(value.0, SLIM_PORT),
+            tlv_map: None,
             sync_group_id: value.1,
+        }
+    }
+}
+
+impl From<SocketAddrV4> for Server {
+    fn from(value: SocketAddrV4) -> Self {
+        Self {
+            socket: value,
+            tlv_map: None,
+            sync_group_id: None,
         }
     }
 }
@@ -65,9 +72,8 @@ impl From<(Ipv4Addr, Option<String>)> for Server {
 impl Default for Server {
     fn default() -> Self {
         Self {
-            ip_address: [0, 0, 0, 0].into(),
-            port: 9000,
-            tlv_map: HashMap::new(),
+            socket: SocketAddrV4::new([0, 0, 0, 0].into(), 9000),
+            tlv_map: None,
             sync_group_id: None,
         }
     }
@@ -99,7 +105,7 @@ impl PreparedServer {
         FramedRead<BufReader<TcpStream>, SlimCodec>,
         FramedWrite<BufWriter<TcpStream>, SlimCodec>,
     )> {
-        let cx = TcpStream::connect((self.server.ip_address, SLIM_PORT))?;
+        let cx = TcpStream::connect(self.server.socket)?;
 
         let helo = ClientMessage::Helo {
             device_id: 12,

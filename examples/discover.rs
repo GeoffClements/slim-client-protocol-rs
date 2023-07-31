@@ -11,16 +11,18 @@ fn main() {
     };
 
     if let Some(server) = slim_discover {
-        println!("Server Address: {:?}", server.ip_address);
-        println!("Server Port: {}", server.port);
+        println!("Server Address: {:?}", server.socket.ip());
+        println!("Server Port: {}", server.socket.port());
         if let Some(sgid) = server.sync_group_id {
             println!("Sync Group: {}", sgid);
         }
 
-        if server.tlv_map.len() > 0 {
-            println!("TLV responses:");
-            for val in server.tlv_map.values() {
-                println!("\t{:?}", val);
+        if let Some(tlv_map) = server.tlv_map {
+            if tlv_map.len() > 0 {
+                println!("TLV responses:");
+                for val in tlv_map.values() {
+                    println!("\t{:?}", val);
+                }
             }
         }
     } else {

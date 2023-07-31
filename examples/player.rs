@@ -62,7 +62,7 @@ fn main() -> anyhow::Result<()> {
 
         slim_rx_in
             .send(ServerMessage::Serv {
-                ip_address: Ipv4Addr::from(server.ip_address),
+                ip_address: Ipv4Addr::from(*server.socket.ip()),
                 sync_group_id: None,
             })
             .ok();
@@ -314,7 +314,7 @@ fn play_stream(
 ) -> anyhow::Result<Option<Rc<RefCell<Stream>>>> {
     // The LMS sends an ip of 0, 0, 0, 0 when it wants us to default to it
     let ip = if server_ip == Ipv4Addr::new(0, 0, 0, 0) {
-        server.ip_address
+        *server.socket.ip()
     } else {
         server_ip
     };
