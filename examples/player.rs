@@ -70,14 +70,10 @@ fn main() -> anyhow::Result<()> {
         // Outer loop to reconnect to a different server and
         // update server details when a Serv message is received
         loop {
-            let name = match name_r.read() {
-                Ok(name) => name,
-                Err(_) => {
-                    return;
-                }
-            };
             let mut caps = Capabilities::default();
-            caps.add_name(&name);
+            if let Ok(name) = name_r.read() {
+                caps.add_name(&name);
+            }
             caps.add(Capability::Maxsamplerate(192000));
             caps.add(Capability::Pcm);
             caps.add(Capability::Mp3);
