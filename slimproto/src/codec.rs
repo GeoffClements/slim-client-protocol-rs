@@ -311,7 +311,7 @@ impl From<BytesMut> for ServerMessage {
                     'a' => {
                         buf.advance(14);
                         let timestamp = buf.get_u32();
-                        ServerMessage::Skip(timestamp)
+                        ServerMessage::Skip(Duration::from_millis(timestamp as u64))
                     }
 
                     cmd @ _ => {
@@ -559,7 +559,7 @@ mod tests {
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
         if let Ok(ServerMessage::Skip(p)) = framed.framed_read() {
-            assert_eq!(p, 252711186);
+            assert_eq!(p, Duration::from_millis(252711186));
         } else {
             panic!("STRMa message not received");
         }

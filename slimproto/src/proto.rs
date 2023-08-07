@@ -260,7 +260,7 @@ pub enum ServerMessage {
     Queryname,
     Setname(String),
     DisableDac,
-    Skip(u32),
+    Skip(Duration),
     Unrecognised(String),
     Error,
 }
