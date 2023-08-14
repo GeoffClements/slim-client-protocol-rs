@@ -256,7 +256,8 @@ impl From<BytesMut> for ServerMessage {
 
                         let flags = StreamFlags::from_bits(buf.split_to(1)[0]).unwrap_or_default();
 
-                        let output_threshold = Duration::from_millis(buf.split_to(1)[0] as u64);
+                        let output_threshold =
+                            Duration::from_millis(buf.split_to(1)[0] as u64 * 10);
 
                         let _ = buf.split_to(1);
 
