@@ -82,6 +82,10 @@ impl StatusData {
     //     self
     // }
 
+    pub fn get_jiffies(&self) -> Duration {
+        self.jiffies
+    }
+
     /// Create a status message for sending to the server
     pub fn make_status_message(&self, msgtype: StatusCode) -> ClientMessage {
         let mut stat_data = self.clone();
