@@ -87,9 +87,9 @@ impl StatusData {
     }
 
     /// Create a status message for sending to the server
-    pub fn make_status_message(&self, msgtype: StatusCode) -> ClientMessage {
-        let mut stat_data = self.clone();
-        stat_data.set_jiffies(Instant::now() - stat_data.start);
+    pub fn make_status_message(&mut self, msgtype: StatusCode) -> ClientMessage {
+        self.set_jiffies(Instant::now() - self.start);
+        let stat_data = self.clone();
         ClientMessage::Stat {
             event_code: msgtype.to_string(),
             stat_data,

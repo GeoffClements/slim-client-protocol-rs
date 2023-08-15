@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
     // Set up variables needed by the Slim protocol
     let mut server = Server::default();
     let name: Arc<RwLock<String>> = Arc::new(RwLock::new("Slimproto_player".to_string()));
-    let status = Arc::new(RwLock::new(StatusData::default()));
+    let status = Arc::new(Mutex::new(StatusData::default()));
     let (slim_tx_in, slim_tx_out) = crossbeam::channel::bounded(1);
     let (slim_rx_in, slim_rx_out) = crossbeam::channel::bounded(1);
 
@@ -154,7 +154,7 @@ fn main() -> anyhow::Result<()> {
                 if let Some(ref mut sm) = stream {
                     let slim_tx_in_ref = slim_tx_in.clone();
                     (*(*sm.borrow_mut())).borrow_mut().flush(None);
-                    if let Ok(status) = status_ref.read() {
+                    if let Ok(mut status) = status_ref.lock() {
                         let msg = status.make_status_message(StatusCode::Flushed);
                         slim_tx_in_ref.send(msg).ok();
                     }
@@ -169,7 +169,7 @@ fn main() -> anyhow::Result<()> {
             }
 
             ServerMessage::Status(ts) => {
-                if let Ok(mut status) = status.write() {
+                if let Ok(mut status) = status.lock() {
                     status.set_timestamp(ts);
                     let msg = status.make_status_message(StatusCode::Timer);
                     slim_tx_in.send(msg).ok();
@@ -185,7 +185,7 @@ fn main() -> anyhow::Result<()> {
                             .borrow_mut()
                             .cork(Some(Box::new(move |success| {
                                 if success {
-                                    if let Ok(status) = status_ref.read() {
+                                    if let Ok(mut status) = status_ref.lock() {
                                         let msg = status.make_status_message(StatusCode::Pause);
                                         slim_tx_in_ref.send(msg).ok();
                                     }
@@ -211,7 +211,7 @@ fn main() -> anyhow::Result<()> {
                             .borrow_mut()
                             .uncork(Some(Box::new(move |success| {
                                 if success {
-                                    if let Ok(status) = status_ref.read() {
+                                    if let Ok(mut status) = status_ref.lock() {
                                         let msg = status.make_status_message(StatusCode::Resume);
                                         slim_tx_in_ref.send(msg).ok();
                                     }
@@ -244,7 +244,7 @@ fn main() -> anyhow::Result<()> {
                     let num_crlf = http_headers.matches("\r\n").count();
 
                     if num_crlf > 0 {
-                        if let Ok(mut status) = status.write() {
+                        if let Ok(mut status) = status.lock() {
                             status.add_crlf(num_crlf as u8);
                         }
 
@@ -286,7 +286,7 @@ fn main() -> anyhow::Result<()> {
 
 fn play_stream(
     slim_tx: Sender<ClientMessage>,
-    status: Arc<RwLock<StatusData>>,
+    status: Arc<Mutex<StatusData>>,
     gain: Arc<Mutex<f32>>,
     autostart: slimproto::proto::AutoStart,
     format: slimproto::proto::Format,
@@ -319,7 +319,7 @@ fn play_stream(
     data_stream.write(http_headers.as_bytes())?;
     data_stream.flush().ok();
 
-    if let Ok(status) = status.read() {
+    if let Ok(mut status) = status.lock() {
         let msg = status.make_status_message(StatusCode::Connect);
         slim_tx.send(msg).ok();
     }
@@ -361,7 +361,7 @@ fn play_stream(
         match symphonia::default::get_probe().format(&hint, mss, &format_opts, &metadata_opts) {
             Ok(probed) => probed,
             Err(_) => {
-                if let Ok(status) = status.read() {
+                if let Ok(mut status) = status.lock() {
                     let msg = status.make_status_message(StatusCode::NotSupported);
                     slim_tx.send(msg).ok();
                 }
@@ -372,7 +372,7 @@ fn play_stream(
     let track = match probed.format.default_track() {
         Some(track) => track,
         None => {
-            if let Ok(status) = status.read() {
+            if let Ok(mut status) = status.lock() {
                 let msg = status.make_status_message(StatusCode::NotSupported);
                 slim_tx.send(msg).ok();
             }
@@ -380,7 +380,7 @@ fn play_stream(
         }
     };
 
-    if let Ok(status) = status.read() {
+    if let Ok(mut status) = status.lock() {
         let msg = status.make_status_message(StatusCode::StreamEstablished);
         slim_tx.send(msg).ok();
     }
@@ -444,7 +444,7 @@ fn play_stream(
         match Stream::new(&mut (*cx).borrow_mut(), "Music", &spec, None) {
             Some(stream) => stream,
             None => {
-                if let Ok(status) = status.read() {
+                if let Ok(mut status) = status.lock() {
                     let msg = status.make_status_message(StatusCode::NotSupported);
                     slim_tx.send(msg).ok();
                 }
@@ -453,7 +453,7 @@ fn play_stream(
         },
     ));
 
-    if let Ok(status) = status.read() {
+    if let Ok(mut status) = status.lock() {
         let msg = status.make_status_message(StatusCode::TrackStarted);
         slim_tx.send(msg).ok();
     }
@@ -512,7 +512,7 @@ fn play_stream(
                         (*sm_ref.as_ptr()).drain(Some(Box::new(move |success| {
                             if success {
                                 (*sm_ref.as_ptr()).disconnect().ok();
-                                if let Ok(status) = status.read() {
+                                if let Ok(mut status) = status.lock() {
                                     let msg = status.make_status_message(StatusCode::DecoderReady);
                                     slim_tx.send(msg).ok();
                                 }
@@ -533,7 +533,7 @@ fn play_stream(
                 };
 
                 if let Ok(Some(stream_time)) = unsafe { (*sm_ref.as_ptr()).get_time() } {
-                    if let Ok(mut status) = status_ref.write() {
+                    if let Ok(mut status) = status_ref.lock() {
                         status.set_elapsed_milli_seconds(stream_time.as_millis() as u32);
                         status.set_elapsed_seconds(stream_time.as_secs() as u32);
                         status.set_output_buffer_size(audio_buf.capacity() as u32);
