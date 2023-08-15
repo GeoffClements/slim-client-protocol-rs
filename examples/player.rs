@@ -329,6 +329,8 @@ fn play_stream(
             threshold as usize * 1024,
             data_stream,
             status.clone(),
+            0,
+            None,
         ))),
         Default::default(),
     );
