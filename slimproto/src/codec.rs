@@ -298,19 +298,19 @@ impl From<BytesMut> for ServerMessage {
                     'f' => ServerMessage::Flush,
 
                     'p' => {
-                        buf.advance(14);
+                        buf.advance(13);
                         let timestamp = buf.get_u32();
                         ServerMessage::Pause(Duration::from_millis(timestamp as u64))
                     }
 
                     'u' => {
-                        buf.advance(14);
+                        buf.advance(13);
                         let timestamp = buf.get_u32();
                         ServerMessage::Unpause(Duration::from_millis(timestamp as u64))
                     }
 
                     'a' => {
-                        buf.advance(14);
+                        buf.advance(13);
                         let timestamp = buf.get_u32();
                         ServerMessage::Skip(Duration::from_millis(timestamp as u64))
                     }
