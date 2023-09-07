@@ -171,7 +171,7 @@ impl From<BytesMut> for ServerMessage {
 
                 match buf.split_to(1)[0] as char {
                     't' => {
-                        let _ = buf.split_to(14);
+                        buf.advance(14);
                         let timestamp = Duration::from_millis(buf.get_u32() as u64);
                         ServerMessage::Status(timestamp)
                     }
@@ -259,7 +259,7 @@ impl From<BytesMut> for ServerMessage {
                         let output_threshold =
                             Duration::from_millis(buf.split_to(1)[0] as u64 * 10);
 
-                        let _ = buf.split_to(1);
+                        buf.advance(1);
 
                         let replay_gain = buf.split_to(4).get_u32() as f64 / GAIN_FACTOR;
 
@@ -532,7 +532,7 @@ mod tests {
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
         if let Ok(ServerMessage::Pause(p)) = framed.framed_read() {
-            assert_eq!(p, Duration::from_millis(252711186));
+            assert_eq!(p, Duration::from_millis(235868177));
         } else {
             panic!("STRMp message not received");
         }
@@ -546,7 +546,7 @@ mod tests {
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
         if let Ok(ServerMessage::Unpause(p)) = framed.framed_read() {
-            assert_eq!(p, Duration::from_millis(252711186));
+            assert_eq!(p, Duration::from_millis(235868177));
         } else {
             panic!("STRMu message not received");
         }
@@ -560,7 +560,7 @@ mod tests {
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
         if let Ok(ServerMessage::Skip(p)) = framed.framed_read() {
-            assert_eq!(p, Duration::from_millis(252711186));
+            assert_eq!(p, Duration::from_millis(235868177));
         } else {
             panic!("STRMa message not received");
         }

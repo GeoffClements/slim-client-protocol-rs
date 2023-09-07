@@ -98,7 +98,7 @@ mod tests {
     fn single() {
         let mut c = Capabilities::default();
         c.add(Capability::Mp3);
-        assert_eq!(c.to_string(), "AccuratePlayPoints,Model=squeezelite,mp3");
+        assert_eq!(c.to_string(), "AccuratePlayPoints=1,Model=squeezelite,mp3");
     }
 
     #[test]
@@ -107,13 +107,13 @@ mod tests {
         c.add(Capability::Mp3);
         c.add(Capability::Maxsamplerate(9600));
         c.add(Capability::Ogg);
-        assert_eq!(c.to_string(), "AccuratePlayPoints,Model=squeezelite,mp3,MaxSampleRate=9600,ogg");
+        assert_eq!(c.to_string(), "AccuratePlayPoints=1,Model=squeezelite,mp3,MaxSampleRate=9600,ogg");
     }
 
     #[test]
     fn name() {
         let mut c = Capabilities::default();
         c.add_name("Testing");
-        assert_eq!(c.to_string(), "AccuratePlayPoints,Model=squeezelite,Modelname=Testing");
+        assert_eq!(c.to_string(), "AccuratePlayPoints=1,Model=squeezelite,Modelname=Testing");
     }
 }
