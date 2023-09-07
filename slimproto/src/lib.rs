@@ -15,10 +15,9 @@
 //!
 //! [lms]: https://en.wikipedia.org/wiki/Logitech_Media_Server
 //! [slimproto]: crate::proto::SlimProto
-// [discover]: crate::discovery::discover
-// [statusdata]: crate::status::StatusData
-// [slimtcp]: https://wiki.slimdevices.com/index.php/SlimProto_TCP_protocol
-//!
+//! [discover]: crate::discovery::discover
+//! [statusdata]: crate::status::StatusData
+//! [slimtcp]: https://wiki.slimdevices.com/index.php/SlimProto_TCP_protocol
 
 pub mod capability;
 pub mod codec;
