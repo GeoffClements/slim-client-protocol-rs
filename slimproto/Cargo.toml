@@ -13,7 +13,7 @@ version = '0.1.13'
 [dependencies]
 bitflags = "2.4.0"
 bytes = "1.4.0"
-framous = "0.1.2"
+framous = "0.1.3"
 mac_address = "1.1.5"
 
 [dev-dependencies]
