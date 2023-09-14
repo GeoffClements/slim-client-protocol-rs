@@ -106,6 +106,7 @@ impl PreparedServer {
         FramedWrite<BufWriter<TcpStream>, SlimCodec>,
     )> {
         let cx = TcpStream::connect(self.server.socket)?;
+        cx.set_nodelay(true)?;
 
         let helo = ClientMessage::Helo {
             device_id: 12,
