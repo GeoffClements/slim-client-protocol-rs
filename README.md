@@ -22,6 +22,6 @@ This project is licensed under the [MIT license].
 [MIT license]: https://github.com/GeoffClements/slim-client-protocol-rs/blob/master/LICENSE.txt
 
 [![MIT licensed][mit-badge]][mit-url]
-[![Crate](https://img.shields.io/crates/v/slim-client-protocol-rs.svg)](https://crates.io/crates/slim-client-protocol-rs)
+[![Crate](https://img.shields.io/crates/v/slimproto.svg)](https://crates.io/crates/slimproto)
 [![GitHub last commit](https://img.shields.io/github/last-commit/GeoffClements/slim-client-protocol-rs.svg)][github]
 [![Build Status][actions-badge]][actions-url]
