@@ -1,0 +1,30 @@
+# Operating systems to run on
+# Note that other platforms are possible, but we want to save on build credits here.
+# For windows list `- windows` and `- osx` for macOS.
+# Note that for target platforms Android and iOS you may need to install additional tools.
+os:
+  - linux
+
+# What tools should be present
+#compiler:
+#  - gcc
+#  - clang
+
+# Programming language
+language: rust
+
+# Version and channel of rust
+rust:
+  - stable
+
+# Use a cache for cargo
+cache: cargo
+
+# Tasks
+# script:
+#   # Shared
+#   - cargo build --release --verbose --package shared
+#   - cargo test --release --verbose --no-default-features --no-fail-fast --package shared
+#   # Platform
+#   - cargo build --release --verbose --package platform_${TRAVIS_OS_NAME}
+#   - cargo test --release --verbose --no-default-features --no-fail-fast --package platform_${TRAVIS_OS_NAME}
