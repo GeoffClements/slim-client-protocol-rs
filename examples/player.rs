@@ -330,7 +330,6 @@ fn play_stream(
             data_stream,
             status.clone(),
             0,
-            None,
         ))),
         Default::default(),
     );

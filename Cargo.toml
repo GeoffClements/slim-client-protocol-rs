@@ -1,5 +1,3 @@
 [workspace]
-members = [
-  "slimproto",
-  "examples",
-]
+members = ["slimproto", "examples"]
+resolver = "2"

@@ -7,13 +7,10 @@ use std::{
 
 use crate::status::StatusData;
 
-type MaybeCallback = Option<Box<dyn FnMut() + Send + Sync + 'static>>;
-
 pub struct SlimBuffer<R> {
     inner: BufReader<R>,
     status: Arc<Mutex<StatusData>>,
     threshold: u32,
-    threshold_cb: MaybeCallback,
     prebuf: Vec<u8>,
 }
 
@@ -21,12 +18,7 @@ impl<R> SlimBuffer<R>
 where
     R: Read,
 {
-    pub fn new(
-        inner: R,
-        status: Arc<Mutex<StatusData>>,
-        threshold: u32,
-        threshold_cb: MaybeCallback,
-    ) -> Self {
+    pub fn new(inner: R, status: Arc<Mutex<StatusData>>, threshold: u32) -> Self {
         let buf = BufReader::new(inner);
         if let Ok(mut status) = status.lock() {
             status.set_buffer_size(buf.capacity() as u32);
@@ -36,7 +28,6 @@ where
             inner: buf,
             status,
             threshold,
-            threshold_cb,
             prebuf: Vec::with_capacity(255 * 1024),
         };
 
@@ -49,7 +40,6 @@ where
         inner: R,
         status: Arc<Mutex<StatusData>>,
         threshold: u32,
-        threshold_cb: MaybeCallback,
     ) -> Self {
         let buf = BufReader::with_capacity(capacity, inner);
         if let Ok(mut status) = status.lock() {
@@ -60,7 +50,6 @@ where
             inner: buf,
             status,
             threshold,
-            threshold_cb,
             prebuf: Vec::with_capacity(255 * 1024),
         };
 
@@ -79,10 +68,6 @@ where
             } else {
                 break;
             }
-        }
-
-        if let Some(callback) = &mut self.threshold_cb {
-            callback();
         }
     }
 }
@@ -122,8 +107,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::RwLock;
-
     use super::*;
 
     #[test]
@@ -133,7 +116,7 @@ mod tests {
         let status = Arc::new(Mutex::new(StatusData::default()));
         let source: Vec<u8> = (0u8..255).into_iter().cycle().take(BUFLEN).collect();
 
-        let sb = SlimBuffer::new(&source[..], status, 2, None);
+        let sb = SlimBuffer::new(&source[..], status, 2);
         assert_eq!(sb.prebuf, source);
         assert!(sb.prebuf.len() == source.len());
     }
@@ -145,40 +128,12 @@ mod tests {
         let status = Arc::new(Mutex::new(StatusData::default()));
         let source: Vec<u8> = (0u8..255).into_iter().cycle().take(BUFLEN).collect();
 
-        let mut sb = SlimBuffer::new(&source[..], status, 2, None);
+        let mut sb = SlimBuffer::new(&source[..], status, 2);
 
         let mut buf = vec![0u8; BUFLEN];
         let n = sb.read(&mut buf).unwrap();
         sb.read(&mut buf[n..]).unwrap();
         assert_eq!(buf, source);
         assert!(sb.prebuf.len() == 0);
-    }
-
-    #[test]
-    fn callback() {
-        const BUFLEN: usize = 1024 * 2;
-
-        let status = Arc::new(Mutex::new(StatusData::default()));
-        let source: Vec<u8> = (0u8..255).into_iter().cycle().take(BUFLEN).collect();
-
-        let value = Arc::new(RwLock::new(0));
-        let value_ref = value.clone();
-        let mut sb = SlimBuffer::new(
-            &source[..],
-            status,
-            2,
-            Some(Box::new(move || {
-                if let Ok(mut value) = value_ref.write() {
-                    *value += 1;
-                }
-            })),
-        );
-
-        let mut buf = vec![0u8; BUFLEN];
-        let n = sb.read(&mut buf).unwrap();
-        sb.read(&mut buf[n..]).unwrap();
-
-        let val = value.read().unwrap();
-        assert!(*val == 1);
     }
 }

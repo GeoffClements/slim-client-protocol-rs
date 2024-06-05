@@ -107,6 +107,8 @@ impl PreparedServer {
     )> {
         let cx = TcpStream::connect(self.server.socket)?;
         cx.set_nodelay(true)?;
+        cx.set_read_timeout(Some(Duration::from_secs(30)))?;
+        cx.set_write_timeout(Some(Duration::from_secs(30)))?;
 
         let helo = ClientMessage::Helo {
             device_id: 12,
