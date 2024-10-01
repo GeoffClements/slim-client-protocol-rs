@@ -15,6 +15,3 @@ bitflags = "2.5.0"
 bytes = "1.7.2"
 framous = "0.1.4"
 mac_address = "1.1.7"
-
-[dev-dependencies]
-socket-server-mocker = "0.2.0"
