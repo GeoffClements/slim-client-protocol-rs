@@ -8,10 +8,10 @@ license = "MIT"
 name = 'slimproto'
 readme = "../README.md"
 repository = "https://github.com/GeoffClements/slim-client-protocol-rs"
-version = '0.1.19'
+version = '0.1.20'
 
 [dependencies]
-bitflags = "2.6.0"
-bytes = "1.8.0"
-framous = "0.1.6"
+bitflags = "2.8.0"
+bytes = "1.9.0"
+framous = "0.1.7"
 mac_address = "1.1.7"
