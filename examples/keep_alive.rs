@@ -28,8 +28,7 @@ use std::time::Duration;
 fn main() {
     if let Some(server) = discover(Some(Duration::from_secs(10))).unwrap() {
         // Add some capabilities
-        let mut caps = Capabilities::default();
-        caps.add_name("Example");
+        let caps = Capabilities::default();
 
         // Prepare the server object with the capabilities and then connect
         let (mut rx, mut tx) = server.prepare(caps).connect().unwrap();
