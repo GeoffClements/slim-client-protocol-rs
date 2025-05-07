@@ -112,11 +112,21 @@ where
     R: Read,
 {
     fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        if self.prebuf.len() > 0 {
+            return Ok(&self.prebuf[..]);
+        }
         self.inner.fill_buf()
     }
 
     fn consume(&mut self, amt: usize) {
-        self.inner.consume(amt)
+        let mut amt_left = amt;
+
+        if self.prebuf.len() > 0 {
+            let n = amt.min(self.prebuf.len());
+            self.prebuf.drain(..n);
+            amt_left -= n;
+        }
+        self.inner.consume(amt_left)
     }
 }
 
