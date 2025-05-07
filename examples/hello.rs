@@ -23,7 +23,8 @@ fn main() {
         // Discover server
         if let Some(server) = discover(Some(Duration::from_secs(10))).unwrap() {
             // Add some minimal capabilities
-            let caps = Capabilities::default();
+            let mut caps = Capabilities::default();
+            caps.add_name("Example");
 
             // Prepare the server object with the capabilities and then connect
             let (mut rx, _tx) = server.prepare(caps).connect().unwrap();

@@ -51,6 +51,7 @@ fn main() -> anyhow::Result<()> {
 
     // Start the Slim protocol thread
     // Runs forever
+    let name_r = name.clone();
     std::thread::spawn(move || {
         let mut server = match discover(None) {
             Ok(Some(server)) => server,
@@ -70,6 +71,9 @@ fn main() -> anyhow::Result<()> {
         // update server details when a Serv message is received
         loop {
             let mut caps = Capabilities::default();
+            if let Ok(name) = name_r.read() {
+                caps.add_name(&name);
+            }
             caps.add(Capability::Maxsamplerate(192000));
             caps.add(Capability::Pcm);
             caps.add(Capability::Mp3);
