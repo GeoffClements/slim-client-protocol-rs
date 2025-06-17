@@ -7,7 +7,7 @@ use framous::{FramedRead, FramedWrite, FramedWriter};
 use mac_address::{get_mac_address, MacAddress};
 pub const SLIM_PORT: u16 = 3483;
 
-use crate::{codec::SlimCodec, status::StatusData, Capabilities, Capability};
+use crate::{codec::SlimCodec, status::StatusData, Capabilities};
 
 use std::{
     collections::HashMap,
@@ -34,6 +34,7 @@ pub struct Server {
     pub socket: SocketAddrV4,
     pub tlv_map: Option<ServerTlvMap>,
     pub sync_group_id: Option<String>,
+    pub(crate) caps: Capabilities,
 }
 
 /// Allow to clone the server.
@@ -44,6 +45,7 @@ impl Clone for Server {
             socket: self.socket,
             tlv_map: None,
             sync_group_id: self.sync_group_id.as_ref().map(String::from),
+            caps: self.caps.clone(),
         }
     }
 }
@@ -55,6 +57,7 @@ impl From<(Ipv4Addr, Option<String>)> for Server {
             socket: SocketAddrV4::new(value.0, SLIM_PORT),
             tlv_map: None,
             sync_group_id: value.1,
+            caps: Capabilities(Vec::new()),
         }
     }
 }
@@ -65,6 +68,7 @@ impl From<SocketAddrV4> for Server {
             socket: value,
             tlv_map: None,
             sync_group_id: None,
+            caps: Capabilities(Vec::new()),
         }
     }
 }
@@ -75,40 +79,23 @@ impl Default for Server {
             socket: SocketAddrV4::new([0, 0, 0, 0].into(), 9000),
             tlv_map: None,
             sync_group_id: None,
+            caps: Capabilities(Vec::new()),
         }
     }
-}
-
-/// A prepared server struct is one that has capabilities and is ready
-/// for connection to the Slim server
-pub struct PreparedServer {
-    server: Server,
-    caps: Capabilities,
 }
 
 impl Server {
-    pub fn prepare(&self, mut caps: Capabilities) -> PreparedServer {
-        if let Some(sgid) = &self.sync_group_id {
-            caps.add(Capability::Syncgroupid(sgid.to_owned()));
-        }
-        PreparedServer {
-            server: self.clone(),
-            caps,
-        }
-    }
-}
-
-impl PreparedServer {
     pub fn connect(
-        self,
+        &self,
     ) -> io::Result<(
         FramedRead<BufReader<TcpStream>, SlimCodec>,
         FramedWrite<BufWriter<TcpStream>, SlimCodec>,
     )> {
-        let cx = TcpStream::connect(self.server.socket)?;
+        let cx = TcpStream::connect(self.socket)?;
         cx.set_nodelay(true)?;
-        cx.set_read_timeout(Some(Duration::from_secs(30)))?;
-        cx.set_write_timeout(Some(Duration::from_secs(30)))?;
+        // cx.set_nonblocking(true)?;
+        // cx.set_read_timeout(Some(Duration::from_secs(30)))?;
+        // cx.set_write_timeout(Some(Duration::from_secs(30)))?;
 
         let helo = ClientMessage::Helo {
             device_id: 12,

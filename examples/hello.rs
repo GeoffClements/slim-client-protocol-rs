@@ -27,7 +27,7 @@ fn main() {
             caps.add_name("Example");
 
             // Prepare the server object with the capabilities and then connect
-            let (mut rx, _tx) = server.prepare(caps).connect().unwrap();
+            let (mut rx, _tx) = server.connect().unwrap();
 
             // Print messages as we receive them
             while let Ok(msg) = rx.framed_read() {

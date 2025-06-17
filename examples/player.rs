@@ -82,7 +82,7 @@ fn main() -> anyhow::Result<()> {
             caps.add(Capability::Flc);
 
             // Connect to the server
-            let (mut rx, mut tx) = match server.clone().prepare(caps).connect() {
+            let (mut rx, mut tx) = match server.clone().connect() {
                 Ok((rx, tx)) => (rx, tx),
                 Err(_) => {
                     return;

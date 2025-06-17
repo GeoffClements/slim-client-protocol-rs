@@ -1,9 +1,9 @@
 /// Provides the types needed to send capability data to the server.
-
 use std::fmt;
 
-/// A client capability as recognised by by the server. Sent as a list of capabilities
+/// A client capability as recognized by by the server. Sent as a list of capabilities
 /// when the client announces itself to the server
+#[derive(Clone)]
 pub enum Capability {
     Wma,
     Wmap,
@@ -24,6 +24,37 @@ pub enum Capability {
     Hasdigitalout,
     Haspreamp,
     Hasdisabledac,
+    Firmware(String),
+    Balance,
+}
+
+impl PartialEq for Capability {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Capability::Wma, Capability::Wma) => true,
+            (Capability::Wmap, Capability::Wmap) => true,
+            (Capability::Wmal, Capability::Wmal) => true,
+            (Capability::Ogg, Capability::Ogg) => true,
+            (Capability::Flc, Capability::Flc) => true,
+            (Capability::Pcm, Capability::Pcm) => true,
+            (Capability::Aif, Capability::Aif) => true,
+            (Capability::Mp3, Capability::Mp3) => true,
+            (Capability::Alc, Capability::Alc) => true,
+            (Capability::Aac, Capability::Aac) => true,
+            (Capability::Maxsamplerate(_), Capability::Maxsamplerate(_)) => true,
+            (Capability::Model(_), Capability::Model(_)) => true,
+            (Capability::Modelname(_), Capability::Modelname(_)) => true,
+            (Capability::Rhap, Capability::Rhap) => true,
+            (Capability::Accurateplaypoints, Capability::Accurateplaypoints) => true,
+            (Capability::Syncgroupid(_), Capability::Syncgroupid(_)) => true,
+            (Capability::Hasdigitalout, Capability::Hasdigitalout) => true,
+            (Capability::Haspreamp, Capability::Haspreamp) => true,
+            (Capability::Hasdisabledac, Capability::Hasdisabledac) => true,
+            (Capability::Firmware(_), Capability::Firmware(_)) => true,
+            (Capability::Balance, Capability::Balance) => true,
+            _ => false,
+        }
+    }
 }
 
 /// When sent to the server a capability is sent as text
@@ -49,13 +80,16 @@ impl fmt::Display for Capability {
             Capability::Hasdigitalout => write!(f, "HasDigitalOut=1"),
             Capability::Haspreamp => write!(f, "HasPreAmp=1"),
             Capability::Hasdisabledac => write!(f, "HasDisableDac=1"),
+            Capability::Firmware(v) => write!(f, "Firmware={}", v),
+            Capability::Balance => write!(f, "Balance=1"),
         }
     }
 }
 
 /// A list of capabilities which is sent to the server when the client announces itself.
 /// See [SlimpProto](crate::proto::SlimProto) for more details.
-pub struct Capabilities(Vec<Capability>);
+#[derive(Clone)]
+pub struct Capabilities(pub(crate) Vec<Capability>);
 
 impl Capabilities {
     /// Add a new capability to the list. Note that capabilities are sent to the server
@@ -64,8 +98,11 @@ impl Capabilities {
     /// Normally you will not need to use this method as capabilities are usually added
     /// using the [add_capability](crate::proto::SlimProto::add_capability) method.
     pub fn add(&mut self, newcap: Capability) {
-        let Self(ref mut caps) = self;
-        caps.push(newcap);
+        if let Some(index) = self.0.iter().position(|c| c == &newcap) {
+            // If the capability already exists, remove it first
+            self.0.remove(index);
+        }
+        self.0.push(newcap);
     }
 
     pub fn add_name(&mut self, name: &str) {
@@ -73,11 +110,16 @@ impl Capabilities {
     }
 }
 
+/// Default to most likely capabilities for a Squeezelite client.
 impl Default for Capabilities {
     fn default() -> Self {
         let mut caps = Vec::new();
-        caps.push(Capability::Accurateplaypoints);
         caps.push(Capability::Model("squeezelite".to_owned()));
+        caps.push(Capability::Modelname("SqueezeLite".to_owned()));
+        caps.push(Capability::Accurateplaypoints);
+        caps.push(Capability::Hasdigitalout);
+        caps.push(Capability::Haspreamp);
+        caps.push(Capability::Hasdisabledac);
         Self(caps)
     }
 }
@@ -98,7 +140,7 @@ mod tests {
     fn single() {
         let mut c = Capabilities::default();
         c.add(Capability::Mp3);
-        assert_eq!(c.to_string(), "AccuratePlayPoints=1,Model=squeezelite,mp3");
+        assert_eq!(c.to_string(), "Model=squeezelite,Modelname=SqueezeLite,AccuratePlayPoints=1,HasDigitalOut=1,HasPreAmp=1,HasDisableDac=1,mp3");
     }
 
     #[test]
@@ -107,13 +149,13 @@ mod tests {
         c.add(Capability::Mp3);
         c.add(Capability::Maxsamplerate(9600));
         c.add(Capability::Ogg);
-        assert_eq!(c.to_string(), "AccuratePlayPoints=1,Model=squeezelite,mp3,MaxSampleRate=9600,ogg");
+        assert_eq!(c.to_string(), "Model=squeezelite,Modelname=SqueezeLite,AccuratePlayPoints=1,HasDigitalOut=1,HasPreAmp=1,HasDisableDac=1,mp3,MaxSampleRate=9600,ogg");
     }
 
     #[test]
     fn name() {
         let mut c = Capabilities::default();
         c.add_name("Testing");
-        assert_eq!(c.to_string(), "AccuratePlayPoints=1,Model=squeezelite,Modelname=Testing");
+        assert_eq!(c.to_string(), "Model=squeezelite,AccuratePlayPoints=1,HasDigitalOut=1,HasPreAmp=1,HasDisableDac=1,Modelname=Testing");
     }
 }

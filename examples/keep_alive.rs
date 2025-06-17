@@ -32,7 +32,7 @@ fn main() {
         caps.add_name("Example");
 
         // Prepare the server object with the capabilities and then connect
-        let (mut rx, mut tx) = server.prepare(caps).connect().unwrap();
+        let (mut rx, mut tx) = server.connect().unwrap();
 
         let mut client_name = String::from("BoringExample");
 

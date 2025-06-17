@@ -1,7 +1,7 @@
 /// This module provides the `discover` function which "pings" for a server
 /// on the network returning its address if it exists.
 
-use crate::proto::{Server, ServerTlv, ServerTlvMap, SLIM_PORT};
+use crate::{proto::{Server, ServerTlv, ServerTlvMap, SLIM_PORT}, Capabilities};
 
 use std::{
     collections::HashMap,
@@ -67,6 +67,7 @@ pub fn discover(timeout: Option<Duration>) -> io::Result<Option<Server>> {
                     }
                 },
                 sync_group_id: None,
+                caps: Capabilities(Vec::new()), // No capabilities in discovery
             })),
             _ => Ok(None),
         },
