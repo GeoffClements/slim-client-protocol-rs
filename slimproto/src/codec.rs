@@ -42,7 +42,14 @@ impl Decoder for SlimCodec {
                 if buf.capacity() < frame_size + 2 {
                     buf.reserve(frame_size);
                 }
-                return Ok(None);
+
+                if messages.is_empty() {
+                    // Not enough data for a complete message, wait for more
+                    return Ok(None);
+                } else {
+                    // We have some messages, but not enough for the next one
+                    break;
+                }
             }
 
             buf.advance(2);
@@ -64,26 +71,6 @@ impl Decoder for SlimCodec {
         }
 
         Ok(Some(messages))
-
-        // let frame_size = u16::from_be_bytes([buf[0], buf[1]]) as usize;
-
-        // if buf.len() < frame_size + 2 {
-        //     if buf.capacity() < frame_size + 2 {
-        //         buf.reserve(frame_size);
-        //     }
-        //     return Ok(None);
-        // };
-
-        // buf.advance(2);
-        // let msg = buf.split_to(frame_size);
-
-        // match msg.into() {
-        //     ServerMessage::Error => Err(io::Error::new(
-        //         io::ErrorKind::InvalidData,
-        //         "Server data corrupted",
-        //     )),
-        //     msg @ _ => Ok(Some(msg)),
-        // }
     }
 }
 
@@ -225,7 +212,7 @@ impl From<BytesMut> for ServerMessage {
                             'l' => Format::Alac,
                             _ => return ServerMessage::Error,
                         };
-                        
+
                         let pcmsamplesize = match buf.split_to(1)[0] as char {
                             '0' => PcmSampleSize::Eight,
                             '1' => PcmSampleSize::Sixteen,
@@ -234,7 +221,7 @@ impl From<BytesMut> for ServerMessage {
                             '?' => PcmSampleSize::SelfDescribing,
                             _ => return ServerMessage::Error,
                         };
-                        
+
                         let pcmsamplerate = match buf.split_to(1)[0] as char {
                             '0' => PcmSampleRate::Rate(11_000),
                             '1' => PcmSampleRate::Rate(22_000),
@@ -249,32 +236,32 @@ impl From<BytesMut> for ServerMessage {
                             '?' => PcmSampleRate::SelfDescribing,
                             _ => return ServerMessage::Error,
                         };
-                        
+
                         let pcmchannels = match buf.split_to(1)[0] as char {
                             '1' => PcmChannels::Mono,
                             '2' => PcmChannels::Stereo,
                             '?' => PcmChannels::SelfDescribing,
                             _ => return ServerMessage::Error,
                         };
-                        
+
                         let pcmendian = match buf.split_to(1)[0] as char {
                             '0' => PcmEndian::Big,
                             '1' => PcmEndian::Little,
                             '?' => PcmEndian::SelfDescribing,
                             _ => return ServerMessage::Error,
                         };
-                        
+
                         let threshold = buf.split_to(1)[0] as u32 * 1024u32;
-                        
+
                         let spdif_enable = match buf.split_to(1)[0] {
                             0 => SpdifEnable::Auto,
                             1 => SpdifEnable::On,
                             2 => SpdifEnable::Off,
                             _ => return ServerMessage::Error,
                         };
-                        
+
                         let trans_period = Duration::from_secs(buf.split_to(1)[0] as u64);
-                        
+
                         let trans_type = match buf.split_to(1)[0] as char {
                             '0' => TransType::None,
                             '1' => TransType::Crossfade,
@@ -684,8 +671,8 @@ mod tests {
         }
 
         let buf = [
-            0u8, 28, b's', b't', b'r', b'm', b's', b'1', b'm', b'2', b'3', b'?', b'0', 1, 2, 3, b'4',
-            1, 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2,
+            0u8, 28, b's', b't', b'r', b'm', b's', b'1', b'm', b'2', b'3', b'?', b'0', 1, 2, 3,
+            b'4', 1, 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2,
         ];
 
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
