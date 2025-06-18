@@ -254,3 +254,5 @@ pub enum ServerMessage {
     Unrecognised(String),
     Error,
 }
+
+pub type ServerMessages = Vec<ServerMessage>;

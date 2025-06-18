@@ -102,25 +102,27 @@ fn main() -> anyhow::Result<()> {
             });
 
             // Inner read loop
-            while let Ok(msg) = rx.framed_read() {
-                match msg {
-                    // Request to change to another server
-                    ServerMessage::Serv {
-                        ip_address: ip,
-                        sync_group_id: sgid,
-                    } => {
-                        server = (ip, sgid).into();
-                        // Now inform the main thread
-                        slim_rx_in
-                            .send(ServerMessage::Serv {
-                                ip_address: ip,
-                                sync_group_id: None,
-                            })
-                            .ok();
-                        break;
-                    }
-                    _ => {
-                        slim_rx_in.send(msg).ok();
+            while let Ok(messages) = rx.framed_read() {
+                for msg in messages.into_iter() {
+                    match msg {
+                        // Request to change to another server
+                        ServerMessage::Serv {
+                            ip_address: ip,
+                            sync_group_id: sgid,
+                        } => {
+                            server = (ip, sgid).into();
+                            // Now inform the main thread
+                            slim_rx_in
+                                .send(ServerMessage::Serv {
+                                    ip_address: ip,
+                                    sync_group_id: None,
+                                })
+                                .ok();
+                            break;
+                        }
+                        _ => {
+                            slim_rx_in.send(msg).ok();
+                        }
                     }
                 }
             }

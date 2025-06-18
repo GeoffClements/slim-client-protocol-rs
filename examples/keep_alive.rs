@@ -20,7 +20,7 @@
 use slimproto::{
     discovery::discover,
     status::{StatusCode, StatusData},
-    Capabilities, ClientMessage, ServerMessage, FramedReader, FramedWriter,
+    Capabilities, ClientMessage, FramedReader, FramedWriter, ServerMessage,
 };
 
 use std::time::Duration;
@@ -41,24 +41,27 @@ fn main() {
 
         // React to messages from the server
         while let Ok(msg) = rx.framed_read() {
-            println!("{:?}", msg);
-            match msg {
-                // Server wants to know our name
-                ServerMessage::Queryname => tx
-                    .framed_write(ClientMessage::Name(String::from(&client_name)))
-                    .unwrap(),
-                // Server wants to set our name
-                ServerMessage::Setname(name) => {
-                    client_name = name;
+            msg.iter().for_each(|m| {
+                println!("{:?}", m);
+                // println!("{:?}", msg);
+                match m {
+                    // Server wants to know our name
+                    ServerMessage::Queryname => tx
+                        .framed_write(ClientMessage::Name(String::from(&client_name)))
+                        .unwrap(),
+                    // Server wants to set our name
+                    ServerMessage::Setname(name) => {
+                        client_name = name.to_owned();
+                    }
+                    // Status tick from the server, respond with updated status data
+                    ServerMessage::Status(ts) => {
+                        status.set_timestamp(*ts);
+                        let msg = status.make_status_message(StatusCode::Timer);
+                        tx.framed_write(msg).unwrap();
+                    }
+                    _ => {}
                 }
-                // Status tick from the server, respond with updated status data
-                ServerMessage::Status(ts) => {
-                    status.set_timestamp(ts);
-                    let msg = status.make_status_message(StatusCode::Timer);
-                    tx.framed_write(msg).unwrap();
-                }
-                _ => {}
-            }
+            });
         }
     }
 }

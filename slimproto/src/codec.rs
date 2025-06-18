@@ -6,8 +6,8 @@ use framous::{self, Decoder, Encoder};
 
 use crate::{
     proto::{
-        AutoStart, Format, PcmChannels, PcmEndian, PcmSampleRate, PcmSampleSize, SpdifEnable,
-        StreamFlags, TransType,
+        AutoStart, Format, PcmChannels, PcmEndian, PcmSampleRate, PcmSampleSize, ServerMessages,
+        SpdifEnable, StreamFlags, TransType,
     },
     ClientMessage, ServerMessage,
 };
@@ -26,33 +26,64 @@ impl Encoder<ClientMessage> for SlimCodec {
 }
 
 impl Decoder for SlimCodec {
-    type Item = ServerMessage;
+    type Item = ServerMessages;
     type Error = io::Error;
 
-    fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<ServerMessage>> {
+    fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<ServerMessages>> {
         if buf.len() <= 2 {
             return Ok(None);
         };
 
-        let frame_size = u16::from_be_bytes(buf[..2].try_into().unwrap()) as usize;
+        let mut messages = Vec::new();
+        while buf.len() > 2 {
+            let frame_size = u16::from_be_bytes([buf[0], buf[1]]) as usize;
 
-        if buf.len() < frame_size + 2 {
-            if buf.capacity() < frame_size + 2 {
-                buf.reserve(frame_size);
+            if buf.len() < frame_size + 2 {
+                if buf.capacity() < frame_size + 2 {
+                    buf.reserve(frame_size);
+                }
+                return Ok(None);
             }
-            return Ok(None);
-        };
 
-        buf.advance(2);
-        let msg = buf.split_to(frame_size);
+            buf.advance(2);
+            let msg = buf.split_to(frame_size);
 
-        match msg.into() {
-            ServerMessage::Error => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Server data corrupted",
-            )),
-            msg @ _ => Ok(Some(msg)),
+            match msg.into() {
+                ServerMessage::Error => {
+                    buf.clear();
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Server data corrupted",
+                    ));
+                }
+
+                msg => {
+                    messages.push(msg);
+                }
+            }
         }
+
+        Ok(Some(messages))
+
+        // let frame_size = u16::from_be_bytes([buf[0], buf[1]]) as usize;
+
+        // if buf.len() < frame_size + 2 {
+        //     if buf.capacity() < frame_size + 2 {
+        //         buf.reserve(frame_size);
+        //     }
+        //     return Ok(None);
+        // };
+
+        // buf.advance(2);
+        // let msg = buf.split_to(frame_size);
+
+        // match msg.into() {
+        //     ServerMessage::Error => Err(io::Error::new(
+        //         io::ErrorKind::InvalidData,
+        //         "Server data corrupted",
+        //     )),
+        //     msg @ _ => Ok(Some(msg)),
+        // }
     }
 }
 
@@ -184,7 +215,6 @@ impl From<BytesMut> for ServerMessage {
                             '3' => AutoStart::AutoDirect,
                             _ => return ServerMessage::Error,
                         };
-
                         let format = match buf.split_to(1)[0] as char {
                             'p' => Format::Pcm,
                             'm' => Format::Mp3,
@@ -195,7 +225,7 @@ impl From<BytesMut> for ServerMessage {
                             'l' => Format::Alac,
                             _ => return ServerMessage::Error,
                         };
-
+                        
                         let pcmsamplesize = match buf.split_to(1)[0] as char {
                             '0' => PcmSampleSize::Eight,
                             '1' => PcmSampleSize::Sixteen,
@@ -204,7 +234,7 @@ impl From<BytesMut> for ServerMessage {
                             '?' => PcmSampleSize::SelfDescribing,
                             _ => return ServerMessage::Error,
                         };
-
+                        
                         let pcmsamplerate = match buf.split_to(1)[0] as char {
                             '0' => PcmSampleRate::Rate(11_000),
                             '1' => PcmSampleRate::Rate(22_000),
@@ -219,32 +249,32 @@ impl From<BytesMut> for ServerMessage {
                             '?' => PcmSampleRate::SelfDescribing,
                             _ => return ServerMessage::Error,
                         };
-
+                        
                         let pcmchannels = match buf.split_to(1)[0] as char {
                             '1' => PcmChannels::Mono,
                             '2' => PcmChannels::Stereo,
                             '?' => PcmChannels::SelfDescribing,
                             _ => return ServerMessage::Error,
                         };
-
+                        
                         let pcmendian = match buf.split_to(1)[0] as char {
                             '0' => PcmEndian::Big,
                             '1' => PcmEndian::Little,
                             '?' => PcmEndian::SelfDescribing,
                             _ => return ServerMessage::Error,
                         };
-
+                        
                         let threshold = buf.split_to(1)[0] as u32 * 1024u32;
-
+                        
                         let spdif_enable = match buf.split_to(1)[0] {
                             0 => SpdifEnable::Auto,
                             1 => SpdifEnable::On,
                             2 => SpdifEnable::Off,
                             _ => return ServerMessage::Error,
                         };
-
+                        
                         let trans_period = Duration::from_secs(buf.split_to(1)[0] as u64);
-
+                        
                         let trans_type = match buf.split_to(1)[0] as char {
                             '0' => TransType::None,
                             '1' => TransType::Crossfade,
@@ -485,13 +515,14 @@ mod tests {
             0u8, 12, b's', b'e', b'r', b'v', 172, 16, 1, 2, b's', b'y', b'n', b'c',
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Serv {
+        let msg = &framed.framed_read().unwrap()[0];
+        if let ServerMessage::Serv {
             ip_address,
-            sync_group_id,
-        }) = framed.framed_read()
+            ref sync_group_id,
+        } = msg
         {
-            assert_eq!(ip_address, Ipv4Addr::new(172, 16, 1, 2));
-            assert_eq!(sync_group_id, Some("sync".to_owned()));
+            assert_eq!(*ip_address, Ipv4Addr::new(172, 16, 1, 2));
+            assert_eq!(sync_group_id, &Some("sync".to_owned()));
         } else {
             panic!("SERV message not received");
         }
@@ -504,10 +535,11 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Status(d)) = framed.framed_read() {
-            assert_eq!(d, Duration::from_millis(252711186));
-        } else {
-            panic!("STRMt message not received");
+        match framed.framed_read().unwrap()[0] {
+            ServerMessage::Status(d) => assert_eq!(d, Duration::from_millis(252711186)),
+            _ => {
+                panic!("STRMt message not received");
+            }
         }
     }
 
@@ -518,7 +550,8 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Stop) = framed.framed_read() {
+        if let ServerMessage::Stop = framed.framed_read().unwrap()[0] {
+            // Successfully received Stop message
         } else {
             panic!("STRMq message not received");
         }
@@ -531,7 +564,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Pause(p)) = framed.framed_read() {
+        if let ServerMessage::Pause(p) = framed.framed_read().unwrap()[0] {
             assert_eq!(p, Duration::from_millis(235868177));
         } else {
             panic!("STRMp message not received");
@@ -545,7 +578,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Unpause(p)) = framed.framed_read() {
+        if let ServerMessage::Unpause(p) = framed.framed_read().unwrap()[0] {
             assert_eq!(p, Duration::from_millis(235868177));
         } else {
             panic!("STRMu message not received");
@@ -559,7 +592,7 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Skip(p)) = framed.framed_read() {
+        if let ServerMessage::Skip(p) = framed.framed_read().unwrap()[0] {
             assert_eq!(p, Duration::from_millis(235868177));
         } else {
             panic!("STRMa message not received");
@@ -573,8 +606,8 @@ mod tests {
             15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Unrecognised(s)) = framed.framed_read() {
-            assert_eq!(s, "strm_x".to_owned());
+        if let ServerMessage::Unrecognised(ref s) = framed.framed_read().unwrap()[0] {
+            assert_eq!(s, "strm_x");
         } else {
             panic!("STRMx message not received");
         }
@@ -584,7 +617,7 @@ mod tests {
     fn recv_enable() {
         let buf = [0u8, 6, b'a', b'u', b'd', b'e', 0, 1];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Enable(a, b)) = framed.framed_read() {
+        if let ServerMessage::Enable(a, b) = framed.framed_read().unwrap()[0] {
             assert_eq!((a, b), (false, true));
         } else {
             panic!("AUDE message not received");
@@ -597,16 +630,12 @@ mod tests {
             0u8, 22, b'a', b'u', b'd', b'g', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 128, 0,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(msg) = framed.framed_read() {
-            match msg {
-                ServerMessage::Gain(left, right) => {
-                    assert_eq!(left, 1.0);
-                    assert_eq!(right, 0.5);
-                }
-                _ => panic!("GAIN message incorrect"),
+        match framed.framed_read().unwrap()[0] {
+            ServerMessage::Gain(left, right) => {
+                assert_eq!(left, 1.0);
+                assert_eq!(right, 0.5);
             }
-        } else {
-            panic!("AUDG message not received");
+            _ => panic!("GAIN message incorrect"),
         }
     }
 
@@ -616,15 +645,11 @@ mod tests {
             0u8, 13, b's', b'e', b't', b'd', 0, b'n', b'e', b'w', b'n', b'a', b'm', b'e', 0,
         ];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(msg) = framed.framed_read() {
-            match msg {
-                ServerMessage::Setname(name) => {
-                    assert_eq!(name, "newname".to_owned());
-                }
-                _ => panic!("SETNAME message incorrect"),
+        match framed.framed_read().unwrap()[0] {
+            ServerMessage::Setname(ref name) => {
+                assert_eq!(name, "newname");
             }
-        } else {
-            panic!("SETD message not received");
+            _ => panic!("SETNAME message incorrect"),
         }
     }
 
@@ -632,9 +657,11 @@ mod tests {
     fn recv_queryname() {
         let buf = [0u8, 5, b's', b'e', b't', b'd', 0];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Queryname) = framed.framed_read() {
-        } else {
-            panic!("SETD message not received");
+        match framed.framed_read().unwrap()[0] {
+            ServerMessage::Queryname => {
+                // Successfully received Queryname message
+            }
+            _ => panic!("SETD message not received"),
         }
     }
 
@@ -642,9 +669,11 @@ mod tests {
     fn recv_disabledac() {
         let buf = [0u8, 5, b's', b'e', b't', b'd', 4];
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::DisableDac) = framed.framed_read() {
-        } else {
-            panic!("SETD message not received");
+        match framed.framed_read().unwrap()[0] {
+            ServerMessage::DisableDac => {
+                // Successfully received DisableDac message
+            }
+            _ => panic!("SETD message not received"),
         }
     }
 
@@ -653,71 +682,98 @@ mod tests {
         fn do_panic() {
             panic!("STRMs message not received");
         }
+
         let buf = [
-            0u8, 28, b's', b't', b'r', b'm', b's', b'1', b'm', b'2', b'3', b'?', b'0', 1, 2, 3, 4,
-            b'1', 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2,
+            0u8, 28, b's', b't', b'r', b'm', b's', b'1', b'm', b'2', b'3', b'?', b'0', 1, 2, 3, b'4',
+            1, 2, 0, 0, 1, 128, 0, 35, 41, 172, 16, 1, 2,
         ];
+
         let mut framed = FramedRead::new(&buf[..], SlimCodec);
-        if let Ok(ServerMessage::Stream {
-            autostart,
-            format,
-            pcmsamplesize,
-            pcmsamplerate,
-            pcmchannels,
-            pcmendian,
-            threshold,
-            spdif_enable,
-            trans_period,
-            trans_type,
-            flags,
-            output_threshold,
-            replay_gain,
-            server_port,
-            server_ip,
-            http_headers,
-        }) = framed.framed_read()
-        {
-            if let AutoStart::Auto = autostart {
-            } else {
-                do_panic();
+        match framed.framed_read().unwrap()[0] {
+            ServerMessage::Stream {
+                ref autostart,
+                ref format,
+                ref pcmsamplesize,
+                ref pcmsamplerate,
+                ref pcmchannels,
+                ref pcmendian,
+                threshold,
+                ref spdif_enable,
+                trans_period,
+                ref trans_type,
+                ref flags,
+                output_threshold,
+                replay_gain,
+                server_port,
+                server_ip,
+                ref http_headers,
+            } => {
+                if let AutoStart::Auto = autostart {
+                } else {
+                    do_panic();
+                }
+                if let Format::Mp3 = format {
+                } else {
+                    do_panic();
+                }
+                if let PcmSampleSize::Twenty = pcmsamplesize {
+                } else {
+                    do_panic();
+                }
+                if let PcmSampleRate::Rate(r) = pcmsamplerate {
+                    assert_eq!(*r, 44100);
+                } else {
+                    do_panic();
+                }
+                if let PcmChannels::SelfDescribing = pcmchannels {
+                } else {
+                    do_panic();
+                }
+                if let PcmEndian::Big = pcmendian {
+                } else {
+                    do_panic();
+                }
+                assert_eq!(threshold, 1024);
+                if let SpdifEnable::Off = spdif_enable {
+                } else {
+                    do_panic();
+                }
+                assert_eq!(trans_period, Duration::from_secs(3));
+                if let TransType::FadeInOut = trans_type {
+                } else {
+                    do_panic();
+                }
+                assert_eq!(flags, &StreamFlags::INVERT_POLARITY_LEFT);
+                assert_eq!(output_threshold, Duration::from_millis(20));
+                assert_eq!(replay_gain, 1.5);
+                assert_eq!(server_port, 9001);
+                assert_eq!(server_ip, Ipv4Addr::new(172, 16, 1, 2));
+                assert!(http_headers.is_none());
             }
-            if let Format::Mp3 = format {
-            } else {
-                do_panic();
+            _ => do_panic(),
+        }
+    }
+
+    #[test]
+    fn multiple_messages() {
+        let buf = [
+            0u8, 5, b's', b'e', b't', b'd', 0, 0u8, 5, b's', b'e', b't', b'd', 4,
+        ];
+
+        let mut framed = FramedRead::new(&buf[..], SlimCodec);
+        let messages = framed.framed_read().unwrap();
+        assert_eq!(messages.len(), 2);
+        match messages[0] {
+            ServerMessage::Queryname => {
+                // Successfully received Queryname message
             }
-            if let PcmSampleSize::Twenty = pcmsamplesize {
-            } else {
-                do_panic();
+            _ => panic!("SETD message not received"),
+        }
+        match messages[1] {
+            ServerMessage::DisableDac => {
+                // Successfully received DisableDac message
             }
-            if let PcmSampleRate::Rate(r) = pcmsamplerate {
-                assert_eq!(r, 44100);
-            } else {
-                do_panic();
-            }
-            if let PcmChannels::SelfDescribing = pcmchannels {
-            } else {
-                do_panic();
-            }
-            if let PcmEndian::Big = pcmendian {
-            } else {
-                do_panic();
-            }
-            assert_eq!(threshold, 1024);
-            if let SpdifEnable::Off = spdif_enable {
-            } else {
-                do_panic();
-            }
-            assert_eq!(trans_period, Duration::from_secs(3));
-            if let TransType::FadeInOut = trans_type {
-            } else {
-                do_panic();
-            }
-            assert_eq!(flags, StreamFlags::INVERT_POLARITY_LEFT);
-            assert_eq!(output_threshold, Duration::from_millis(2));
-            assert_eq!(replay_gain, 1.5);
-            assert_eq!(server_port, 9001);
-            assert_eq!(server_ip, Ipv4Addr::new(172, 16, 1, 2));
-            assert!(http_headers.is_none());
+            _ => panic!("SETD message not received"),
         }
     }
 }
