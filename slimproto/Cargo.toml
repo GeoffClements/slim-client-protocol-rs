@@ -8,7 +8,7 @@ license = "MIT"
 name = 'slimproto'
 readme = "../README.md"
 repository = "https://github.com/GeoffClements/slim-client-protocol-rs"
-version = '0.1.24'
+version = '0.1.25'
 
 [dependencies]
 bitflags = "2.9.1"
