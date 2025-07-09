@@ -26,6 +26,7 @@ pub enum Capability {
     Hasdisabledac,
     Firmware(String),
     Balance,
+    CanHTTPS,
 }
 
 impl PartialEq for Capability {
@@ -52,6 +53,7 @@ impl PartialEq for Capability {
             (Capability::Hasdisabledac, Capability::Hasdisabledac) => true,
             (Capability::Firmware(_), Capability::Firmware(_)) => true,
             (Capability::Balance, Capability::Balance) => true,
+            (Capability::CanHTTPS, Self::CanHTTPS) => true,
             _ => false,
         }
     }
@@ -82,6 +84,7 @@ impl fmt::Display for Capability {
             Capability::Hasdisabledac => write!(f, "HasDisableDac=1"),
             Capability::Firmware(v) => write!(f, "Firmware={}", v),
             Capability::Balance => write!(f, "Balance=1"),
+            Capability::CanHTTPS => write!(f, "canHTTPS=1"),
         }
     }
 }
