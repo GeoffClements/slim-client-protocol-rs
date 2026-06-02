@@ -8,7 +8,7 @@ to a [slim device][slimdevices].
 This crate simplifies writing of a client for this protocol by providing a
 library that sends and receives messages to a slim server.
 
-[slimtcpwiki]: https://wiki.slimdevices.com/index.php/SlimProto_TCP_protocol
+[slimtcpwiki]: https://lyrion.org/reference/slimproto-protocol/
 [slimdevices]: https://en.wikipedia.org/wiki/Slim_Devices
 
 ## Supported Rust Versions
@@ -29,5 +29,5 @@ This project is licensed under the [MIT license].
 [mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
 [mit-url]: https://github.com/slimproto/blob/master/LICENSE
 [github]: https://github.com/GeoffCLements/slim-client-protocol-rs
-[actions-badge]: https://github.com/GeoffClements/slim-client-protocol-rs/actions/workflows/rust.yml/badge.svg
+[actions-badge]: https://github.com/GeoffClements/slim-client-protocol-rs/actions/workflows/build_test.yml/badge.svg
 [actions-url]: https://github.com/GeoffClements/slim-client-protocol-rs/actions?query=workflow%3Arust+branch%3Amaster
